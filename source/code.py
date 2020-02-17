@@ -50,7 +50,7 @@ class featureExtractor:
         
         x_val = self.transform_vectorizer(val_text)
         
-        return x_train, x_val, vectorizer, selector
+        return x_train, x_val
         
 
     def transform_vectorizer(self, val_texts):        
