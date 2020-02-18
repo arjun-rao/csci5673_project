@@ -4,9 +4,9 @@ import pickle
 import random
 import gzip
 import matplotlib.pyplot as plt
+from IPython import embed
 
-
-class Network:
+class NN:
     def __init__(self, sizes, keep_prob=-1):
         self.L = len(sizes)
         self.sizes = sizes
@@ -77,7 +77,7 @@ class Network:
                 for ll in range(self.L - 1):
                     self.weights[ll] = self.weights[ll]*(1-lam*eta) - eta * dw[ll]
                     self.biases[ll] = self.biases[ll] - eta * db[ll]
-                
+
             if verbose:
                 if epoch == 0 or (epoch + 1) % 20 == 0:
                     acc_train = self.evaluate(train_x,train_y)
@@ -97,7 +97,7 @@ class Network:
         """
         db_list = [np.zeros(b.shape) for b in self.biases]
         dW_list = [np.zeros(W.shape) for W in self.weights]
-        
+
         a = x
         a_list = [a]
         z_list = [np.zeros(a.shape)]  # Pad with a placeholder so that indices match
@@ -116,27 +116,27 @@ class Network:
         L = self.L
         delta = [np.zeros((n, 1)) for n in self.sizes]
         delta[L - 1] = self.grad_cost(a_list[L - 1], y) * self.sigmoid_prime(z_list[L - 1])
-        
+
         for ll in range(L - 1, 0, -1):
             db_list[ll - 1] = delta[ll]
             dW_list[ll - 1] = np.dot(delta[ll], a_list[ll - 1].T)
             delta[ll - 1] = np.dot(self.weights[ll - 1].T, delta[ll]) * self.sigmoid_prime(z_list[ll - 1])
-        
+
         return (dW_list, db_list)
-    
+
     def back_prop_dropout(self, x, y):
         """
         Back propagation with dropout on the hidden layers other than the output layer.
-        
+
         Dropout layer can be thought of as a special linear layer between layers.
         """
         db_list = [np.zeros(b.shape) for b in self.biases]
         dW_list = [np.zeros(W.shape) for W in self.weights]
-        
+
         a = x
         a_list = [a]
         z_list = [np.zeros(a.shape)]  # Pad with a placeholder so that indices match
-        
+
         for index,(W, b) in enumerate(zip(self.weights, self.biases)):
             z = np.dot(W,a)+b
             z_list.append(z)
@@ -151,11 +151,11 @@ class Network:
         L = self.L
         delta = [np.zeros((n, 1)) for n in self.sizes]
         delta[L - 1] = self.grad_cost(a_list[L - 1], y) * self.sigmoid_prime(z_list[L - 1])
-        
+
         for ll in range(L - 1, 0, -1):
             db_list[ll - 1] = delta[ll]
             dW_list[ll - 1] = np.dot(delta[ll], a_list[ll - 1].T)
-            delta[ll - 1] = np.dot(self.weights[ll - 1].T, delta[ll]) * self.sigmoid_prime(z_list[ll - 1])        
+            delta[ll - 1] = np.dot(self.weights[ll - 1].T, delta[ll]) * self.sigmoid_prime(z_list[ll - 1])
 
         return (dW_list, db_list)
 
@@ -168,4 +168,4 @@ class Network:
             yhat = self.forward_prop(test_x[idx])
             ctr += np.argmax(yhat) == np.argmax(test_y[idx])
         return float(ctr) / float(len(test_x))
-   
+

@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from collections import defaultdict
 class Dataset:
     def __init__(self, inputFile):
-        self.data = pd.read_csv(inputFile, encoding='latin-1')  
+        self.data = pd.read_csv(inputFile, encoding='latin-1')
         self.X_train = []
         self.y_train = []
         self.X_test = []
@@ -15,9 +15,10 @@ class Dataset:
         self.train_step_splits_y = defaultdict(lambda: defaultdict(list))
 
     def train_test_split(self, test_percent):
-        y = list(self.data["v1"])
+        y = list([1 if item == 'spam' else 0 for item in self.data["v1"]])
         X = list(self.data["v2"])
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size=test_percent, random_state=42)
+        return self.X_train, self.X_test, self.y_train, self.y_test
 
     def client_split(self, n):
         kf = KFold(n_splits=n)
@@ -28,6 +29,7 @@ class Dataset:
                 self.client_splits_y[i].append(self.y_train[idx])
             i+=1
         # print(len(self.client_splits_X[3]), len(self.client_splits_y[3]))
+        return self.client_splits_X, self.client_splits_y
 
     def train_step_split(self, m):
         kf = KFold(n_splits=m)
@@ -36,11 +38,14 @@ class Dataset:
             for train_index, test_index in kf.split(data):
                 for idx in test_index:
                     self.train_step_splits_X[client][i].append(data[idx])
-                    self.train_step_splits_y[client][i].append(self.train_step_splits_y[client][idx])   
+                    self.train_step_splits_y[client][i].append(self.client_splits_y[client][idx])
                 i+=1
-            
+        return self.train_step_splits_X, self.train_step_splits_y
 
-d = Dataset("../data/spam.csv")
-d.train_test_split(0.2)
-d.client_split(5)
-d.train_step_split(3)
+
+
+if __name__ == "__main__":
+    d = Dataset("../data/spam.csv")
+    d.train_test_split(0.2)
+    d.client_split(5)
+    d.train_step_split(3)
