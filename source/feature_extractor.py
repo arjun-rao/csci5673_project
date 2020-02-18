@@ -4,7 +4,7 @@ from sklearn.feature_selection import f_classif
 from sklearn.model_selection import train_test_split
 
 
-class featureExtractor:
+class FeatureExtractor:
     def __init__(self):
         # Vectorization parameters
 
@@ -28,7 +28,7 @@ class featureExtractor:
         self.vectorizer = None
         self.selector = None
 
-    def fit_vectorizer(self, train_texts, train_labels, val_text):
+    def fit(self, train_texts, train_labels):
         # Create keyword arguments to pass to the 'tf-idf' vectorizer.
         self.kwargs = {
                 'ngram_range': self.NGRAM_RANGE,  # Use 1-grams + 2-grams.
@@ -44,16 +44,14 @@ class featureExtractor:
         x_train = self.vectorizer.fit_transform(train_texts)
         # Select top 'k' of the vectorized features.
         self.selector = SelectKBest(f_classif, k=min(self.TOP_K, x_train.shape[1]))
-        selector.fit(x_train, train_labels)
-        x_train = selector.transform(x_train)
+        self.selector.fit(x_train, train_labels)
+        x_train = self.selector.transform(x_train)
         x_train = x_train.astype('float32')
         
-        x_val = self.transform_vectorizer(val_text)
-        
-        return x_train, x_val
+        return x_train
         
 
-    def transform_vectorizer(self, val_texts):        
+    def transform(self, val_texts):        
         # Vectorize validation texts.
         x_val = self.vectorizer.transform(val_texts)
         x_val = self.selector.transform(x_val) 
