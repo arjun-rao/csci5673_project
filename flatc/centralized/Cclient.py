@@ -1,7 +1,7 @@
 # contains SocketServer,SocketClient classes
 import socket
 
-class SocketClient():
+class SocketClient:
 
     def __init__(self, sock=None):
         if sock is None:
