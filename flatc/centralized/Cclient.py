@@ -1,8 +1,6 @@
 # contains SocketServer,SocketClient classes
 import socket
 
-
-
 class SocketClient():
 
     def __init__(self, sock=None):
@@ -20,6 +18,6 @@ class SocketClient():
         'sends json object having the local weights to the server' 
   
     def Receive(self):
-        'receives the processes weights from the server'
+        'receives the processed  weights from the server'
 
 
