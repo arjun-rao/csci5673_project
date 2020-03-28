@@ -10,7 +10,7 @@ class SocketServer():
         else:
             self.sock = sock
 
-    def connect(self, host, port):
+    def connectToHost(self, host, port):
         self.sock.connect((host, port))
   
     def Listen(self,msg='Accepted Connection from:'):
@@ -19,11 +19,11 @@ class SocketServer():
     def Receive(self,size=1024):
 		'receives the local weights of clients'
 
-    def process_weights(self,client_weights):
+    def processWeights(self,client_weights):
 		'Receives client weights, processes and then returns json_data'	
 		return Json_data
 	
-    def Send(self,Json_data):
+    def Sendweights(self,Json_data):
 		'server sends the processed weights to the client'
 
 
