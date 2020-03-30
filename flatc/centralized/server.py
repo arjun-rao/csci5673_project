@@ -56,13 +56,13 @@ class Server:
 		return
 
 
-	def _run(self):
+	def accept(self):
 		"""
 		Runs the server
 		"""
 		connection, client_address = self.server_socket.accept()
 		print("Client %s, %s connected" % client_address)
-		return connection
+		return connection, client_address
 
 
 	def run(self):
@@ -70,7 +70,7 @@ class Server:
 		Given  host and port, bounds the socket and runs the server
 		"""
 		self.bind_socket()
-		connection = self._run()
+		connection, client_address = self.accept()
 		self.receive(connection)
 		self.send(connection,'hey tan')
 
