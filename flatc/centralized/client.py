@@ -1,5 +1,15 @@
 import socket
 import argparse
+import pickle
+import numpy as np
+
+class Message:
+	def __init__(self, id, modelid, weights, clientno, roundno):
+		self.id = id
+		self.modelid = modelid
+		self.weights = weights
+		self.clientno = clientno
+		self.roundno = roundno
 
 class Client:
 
@@ -25,28 +35,32 @@ class Client:
 	def compute_new_model(self, weights):
 		pass
 
-	def receive_updatedweights(self):
+	def get_updatedweights(self, modelid):
 		"""
 		Client receives the updates weights from the server
 		"""
+		msg = Message(1, modelid, None, None, None)
+		msg_pkl = pickle.dumps(msg)
+		self.ClientSocket.send(msg_pkl)
 		Response = self.ClientSocket.recv(1024)
 		compute_new_model(Response.decode('utf-8'))
 
 
-	def send_message(self):
+	def send_weights(self, weights, clientno, roundno): #numpy
 		"""
 		Client sends his local weights using this function, we can modify it
 		"""
-		while True:
-			Input = input('Send local weights to server, type something:')
-			self.ClientSocket.send(str.encode(Input))
-			self.receive_updatedweights()
+		msg = Message(0, -1, weights, clientno, roundno)
+		msg_pkl = pickle.dumps(msg)
+		self.ClientSocket.send(msg_pkl)
+		# while True:
+		# 	self.receive_updatedweights()
 
 
 	def run(self):
 		self.connection()
-		self.send_message()
-		#self.receive_updatedweights()
+		self.send_weights(np.array([1,2,3]), 1, 2)
+		self.get_updatedweights(0)
 
 
 def main():
