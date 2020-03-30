@@ -13,6 +13,11 @@ class Model:
         # TODO: Fit Feature Extractor on X & Y
         # Retrain the model with this data but don't reinitialize weights
 
+    def predict(self, x):
+        # Transform x into features using feature extractor
+        # predict using self.model.predict(x)
+        pass
+
     def update_weights(weights):
         # TODO: Algorithm to average weights
         old_weights = self.model.get_weights()
