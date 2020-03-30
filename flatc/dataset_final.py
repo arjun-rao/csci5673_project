@@ -4,7 +4,7 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 from IPython import embed
-from itertools import islice 
+from itertools import islice
 import os
 import csv
 import random
@@ -34,15 +34,15 @@ class Dataset:
         train_mapped = list(zip(self.X_train, self.y_train))
         random.shuffle(train_mapped)
         self.X_train, self.y_train = zip(*train_mapped)
-        
+
         client_data_sizes = []
         while np.sum(client_data_sizes)!=len(self.X_train):
             rand_dist = np.random.dirichlet(np.ones(self.n))*len(self.X_train)
             client_data_sizes = [round(val) for val in rand_dist]
-        
-        temp = iter(train_mapped) 
+
+        temp = iter(train_mapped)
         res = [list(islice(temp, 0, int(ele))) for ele in client_data_sizes]
-        
+
         for i in range(self.n):
             self.client_splits_X[i] = [tuple[0] for tuple in res[i]]
             self.client_splits_y[i] = [tuple[1] for tuple in res[i]]
@@ -66,20 +66,20 @@ class Dataset:
             for roundno in range(self.m):
                 filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
-                with open(filename, 'w', encoding="utf-8", newline='') as csvfile:  
-                    csvwriter = csv.writer(csvfile) 
+                with open(filename, 'w', encoding="utf-8", newline='') as csvfile:
+                    csvwriter = csv.writer(csvfile)
                     csvwriter.writerow(fields)
                     for i in range(len(self.train_step_splits_X[client][roundno])):
                         csvwriter.writerow([self.train_step_splits_X[client][roundno][i], self.train_step_splits_y[client][roundno][i]])
 
-    def get_round_data(self, roundNo):
-        filename = "data" + "/" + str(roundno) + ".csv"
-        data = pd.read_csv(filename, encoding='latin-1')
-        return data["v1"], data["v2"]
-    
+def get_round_data(dir, roundNo):
+    filename = os.path.join(dir, '{}.csv'.format(roundNo))
+    data = pd.read_csv(filename, encoding='latin-1')
+    return data["v1"], data["v2"]
+
 if __name__ == "__main__":
     d = Dataset("../data/spam.csv", 0.2, 5, 3)
     d.train_test_split()
     d.client_split()
     d.train_step_split()
-    d.write_data_to_file()     
+    d.write_data_to_file()

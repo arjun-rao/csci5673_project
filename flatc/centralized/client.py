@@ -1,4 +1,5 @@
 import socket
+import argparse
 
 class Client:
 
@@ -21,14 +22,16 @@ class Client:
 		self.ClientSocket = socket.socket()
 		self.ClientSocket.connect((self.host,self.port))
 
+	def compute_new_model(self, weights):
+		pass
 
 	def receive_updatedweights(self):
 		"""
 		Client receives the updates weights from the server
 		"""
 		Response = self.ClientSocket.recv(1024)
-		print(Response.decode('utf-8'))
-		
+		compute_new_model(Response.decode('utf-8'))
+
 
 	def send_message(self):
 		"""
@@ -45,12 +48,10 @@ class Client:
 		self.send_message()
 		#self.receive_updatedweights()
 
-		
+
 def main():
 	client = Client('127.0.0.1', 10000)
 	client.run()
-	client2 = client('127.0.0.1', 10000)
-	client2.run()
 
 
 if __name__ == '__main__':
