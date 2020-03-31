@@ -63,6 +63,8 @@ class Dataset:
     def write_data_to_file(self):
         fields = ["v1", "v2"]
         for client in range(self.n):
+            filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
             for roundno in range(self.m):
                 filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -74,12 +76,17 @@ class Dataset:
 
 def get_round_data(dir, roundNo):
     filename = os.path.join(dir, '{}.csv'.format(roundNo))
+    return get_data(filename)
+
+def get_data(filename):
     data = pd.read_csv(filename, encoding='latin-1')
     return data["v1"], data["v2"]
 
 if __name__ == "__main__":
     d = Dataset("../data/spam.csv", 0.2, 5, 3)
     d.train_test_split()
+    test_data = pd.DataFrame({'v1': d.X_test, 'v2': d.y_test})
+    test_data.to_csv('data/test.csv')
     d.client_split()
     d.train_step_split()
     d.write_data_to_file()

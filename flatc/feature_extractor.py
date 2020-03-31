@@ -11,8 +11,8 @@ class FeatureExtractor:
         # Range (inclusive) of n-gram sizes for tokenizing text.
         self.NGRAM_RANGE = (1, 2)
 
-        # Limit on the number of features. We use the top 20K features.
-        self.TOP_K = 20000
+        # Limit on the number of features. We use the top 1k features.
+        self.TOP_K = 500
 
         # Whether text should be split into word or character n-grams.
         # One of 'word', 'char'.
@@ -43,7 +43,7 @@ class FeatureExtractor:
         # Learn vocabulary from training texts and vectorize training texts.
         x_train = self.vectorizer.fit_transform(train_texts)
         # Select top 'k' of the vectorized features.
-        self.selector = SelectKBest(f_classif, k=min(self.TOP_K, x_train.shape[1]))
+        self.selector = SelectKBest(f_classif, k=self.TOP_K)
         self.selector.fit(x_train, train_labels)
         x_train = self.selector.transform(x_train)
         x_train = x_train.astype('float32')
