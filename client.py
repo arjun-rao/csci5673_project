@@ -4,12 +4,13 @@ import pickle
 import numpy as np
 
 class Message:
-	def __init__(self, id, modelid, weights, clientno, roundno):
+	def __init__(self, id, modelid, weights, clientno, roundno, instance_count=0):
 		self.id = id
 		self.modelid = modelid
 		self.weights = weights
 		self.clientno = clientno
 		self.roundno = roundno
+		self.instance_count = instance_count
 
 class Client:
 
@@ -46,11 +47,11 @@ class Client:
 		compute_new_model(Response.decode('utf-8'))
 
 
-	def send_weights(self, weights, clientno, roundno): #numpy
+	def send_weights(self, weights, clientno, roundno, instance_count): #numpy
 		"""
 		Client sends his local weights using this function, we can modify it
 		"""
-		msg = Message(0, -1, weights, clientno, roundno)
+		msg = Message(0, -1, weights, clientno, roundno, instance_count)
 		msg_pkl = pickle.dumps(msg)
 		self.ClientSocket.send(msg_pkl)
 		# while True:
@@ -59,7 +60,7 @@ class Client:
 
 	def run(self):
 		self.connection()
-		self.send_weights(np.array([1,2,3]), 1, 2)
+		self.send_weights(np.array([1,2,3]), 1, 2, 100)
 		self.get_updatedweights(0)
 
 

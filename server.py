@@ -8,12 +8,13 @@ from threading import Thread, Lock
 mutex = Lock()
 
 class Message:
-	def __init__(self, id, modelid, weights, clientno, roundno):
+	def __init__(self, id, modelid, weights, clientno, roundno, instance_count=0):
 		self.id = id
 		self.modelid = modelid
 		self.weights = weights
 		self.clientno = clientno
 		self.roundno = roundno
+		self.instance_count = instance_count
 
 class Server:
 
@@ -62,7 +63,7 @@ class Server:
 		print("Weights received!")
 		msg = pickle.loads(msg_pkl)
 		if msg.id==0:
-			self.WriteClientWeights(msg.weights, msg.clientno, msg.roundno)
+			self.WriteClientWeights(msg.weights, msg.clientno, msg.roundno, msg.instance_count)
 		else:
 			self.ReturnUpdatedWeights(connection, msg.modelid)
 
@@ -78,15 +79,16 @@ class Server:
 				connections.send(globalWeightsPkl)
 			else:
 				weights_list = []
+				instance_counts = []
 				for filename in os.listdir("data"):
 					if filename.endswith(".npy"):
 						weights = np.load(filename)
+						instance_counts.append(int(filename.split("_")[2]))
 						weights_list.append(weights)
 				globalWeights = None
 				if modelid!=-1:
 					globalWeights = np.load("GlobalModel.npy")
-         		#updatedWeights = process_weights(weights_list, globalWeights) if first model, then globalWeights will be None
-				updatedWeights = np.array([0,0,0,0,0])
+         		#updatedWeights = process_weights(weights_list, instance_counts, globalWeights) if first model, then globalWeights will be None
 				updatedWeightsPkl = pickle.dumps(updatedWeights)
 				connections.send(updatedWeightsPkl)
 				for filename in os.listdir("data"):
@@ -96,11 +98,12 @@ class Server:
 		finally:
 			mutex.release()
 
-	def WriteClientWeights(self, weights, clientno, roundno): 		
+	def WriteClientWeights(self, weights, clientno, roundno, instance_count): 		
 		print("Weights : ", weights)
 		print("Client no : ", clientno)
 		print("Round no : ", roundno)
-		outfile = "data" + "/" + str(clientno)+"_"+str(roundno)
+		print("Instance count: ", instance_count)
+		outfile = "data" + "/" + str(clientno)+"_"+str(roundno)+"_"str(instance_count)
 		os.makedirs(os.path.dirname(outfile), exist_ok=True)
 		mutex.acquire()
 		try:
