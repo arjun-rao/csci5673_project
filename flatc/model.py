@@ -179,20 +179,20 @@ if __name__ == "__main__":
         model = Model(client_x, client_y)
         _models.append(model)
 
-    results = {}
+    results = [compare(_models)]
     for i in range(1, 5):
         print('i: {}'.format(i))
         weights = [i.get_weights() for i in _models]
         n_samples = [i.x_text.shape[0] for i in _models]
-        results[i] = {'before': compare(_models)}
         average_w = Model.compute_weighted_average(weights, n_samples)
         for j in range(n_clients):
             _models[j].update_weights_average(average_w)
             client_x, client_y = get_round_data('./data/'+str(j), i)
-            model.train(client_x, client_y)
-        results[i]['after'] = compare(_models)
+            _models[j].train(client_x, client_y)
+        results.append(compare(_models))
 
     print(json.dumps(results, indent=2))
+
 
 
     # print(classification_report(test_y, model4.predict(test_x)))

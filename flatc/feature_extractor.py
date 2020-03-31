@@ -12,14 +12,14 @@ class FeatureExtractor:
         self.NGRAM_RANGE = (1, 2)
 
         # Limit on the number of features. We use the top 1k features.
-        self.TOP_K = 200
+        self.TOP_K = 100
 
         # Whether text should be split into word or character n-grams.
         # One of 'word', 'char'.
         self.TOKEN_MODE = 'word'
 
         # Minimum document/corpus frequency below which a token will be discarded.
-        self.MIN_DOCUMENT_FREQUENCY = 2
+        self.MIN_DOCUMENT_FREQUENCY = 1
 
         # Limit on the length of text sequences. Sequences longer than this
         # will be truncated.
