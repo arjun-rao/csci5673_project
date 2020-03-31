@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 import os
 from threading import Thread, Lock
-from flatc.model import Model
+from model import Model
 
 mutex = Lock()
 
@@ -54,7 +54,7 @@ class Server:
         connection.send(msg)
 
 
-    def process_weights(self, weights, instance_counts, globalWeights):
+    def process_weights(self, weights, instance_counts):
         """Algorith to process weights"""
         return Model.compute_weighted_average(weights, instance_counts)
 
@@ -69,31 +69,30 @@ class Server:
 
     def ReturnUpdatedWeights(self, connection, modelid):
         if self.modelid==-1 or self.modelid==modelid:
-            msg = Message(-1, -1, None, -1, -1) #no model or no update
-            connection.send(msg)
+            #no model update
+            connection.send('')
+            return
         mutex.acquire()
         try:
-            if len(dir) == 0:
+            if len(os.listdir("server_data")) == 0:
                 globalWeights = np.load("GlobalModel.npy")
                 globalWeightsPkl = pickle.dumps(globalWeights)
                 connection.send(globalWeightsPkl)
             else:
                 weights_list = []
                 instance_counts = []
-                for filename in os.listdir("data"):
+                for filename in os.listdir("server_data"):
                     if filename.endswith(".npy"):
                         weights = np.load(filename)
                         instance_counts.append(int(filename.split("_")[2]))
                         weights_list.append(weights)
-                globalWeights = None
-                if modelid!=-1:
-                    globalWeights = np.load("GlobalModel.npy")
-                updatedWeights = process_weights(weights_list, instance_counts, globalWeights)
+                updatedWeights = process_weights(weights_list, instance_counts)
                 updatedWeightsPkl = pickle.dumps(updatedWeights)
                 connection.send(updatedWeightsPkl)
-                for filename in os.listdir("data"):
+                for filename in os.listdir("server_data"):
                     os.remove(filename)
                 os.remove("GlobalModel.npy")
+                self.modelid += 1
                 np.save("GlobalModel.npy", updatedWeights)
         finally:
             mutex.release()
@@ -103,7 +102,7 @@ class Server:
         print("Client no : ", clientno)
         print("Round no : ", roundno)
         print("Instance count: ", instance_count)
-        outfile = "data" + "/" + str(clientno)+"_" + str(roundno)+"_" + str(instance_count)
+        outfile = "server_data" + "/" + str(clientno)+"_" + str(roundno)+"_" + str(instance_count)
         os.makedirs(os.path.dirname(outfile), exist_ok=True)
         mutex.acquire()
         try:

@@ -143,6 +143,8 @@ class Model:
     def update_weights(self, weight_update):
         self.model.set_weights(weight_update)
 
+    def get_instance_count(self):
+        return self.x_text.shape[0]
 
     def update_weights_average(self, weight_update):
         new_weight = []
