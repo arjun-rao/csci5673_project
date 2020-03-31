@@ -3,16 +3,24 @@ import sys
 import os
 import numpy as np
 import pandas as pd
+import json
 
 from feature_extractor import FeatureExtractor
 from dataset_final import get_round_data, get_data
 
 import keras
-from keras import models
+from keras import models, initializers
 from keras.layers import Dropout, Dense
 from keras import backend as K
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, roc_auc_score, f1_score
 from IPython import embed
+
+
+
+from numpy.random import seed
+seed(1)
+from tensorflow import set_random_seed
+set_random_seed(2)
 
 
 def mlp_model(input_shape):
@@ -22,11 +30,11 @@ def mlp_model(input_shape):
     """
     model = models.Sequential()
     # model.add(Dropout(rate=0.3, input_shape=input_shape))
-    model.add(Dense(units=64, input_shape=input_shape, activation='relu'))
+    model.add(Dense(units=64, input_shape=input_shape, activation='relu', kernel_initializer=initializers.glorot_uniform(seed=42)))
     # model.add(Dropout(rate=0.3))
-    model.add(Dense(units=64, activation='relu'))
+    model.add(Dense(units=64, activation='relu', kernel_initializer=initializers.glorot_uniform(seed=42)))
     # model.add(Dropout(rate=0.1))
-    model.add(Dense(units=1, activation="sigmoid"))
+    model.add(Dense(units=1, activation="sigmoid", kernel_initializer=initializers.glorot_uniform(seed=42)))
     return model
 
 def recall_m(y_true, y_pred):
@@ -68,14 +76,24 @@ class Model:
             epochs=10,
             callbacks=self.callbacks,
             validation_split=0.1,
-            verbose=2,  # Logs once per epoch.
+            verbose=0,  # Logs once per epoch.
             batch_size=32)
         self.precision = self.history.history['val_precision_m'][-1]
         self.recall = self.history.history['val_recall_m'][-1]
 
     @staticmethod
     def compute_weighted_average(weights, num_samples):
-        pass
+        num_params = len(weights[0])
+        average_weight = []
+        total_N = sum(num_samples)
+        # Number of params per client
+        for i in range(num_params):
+            result = np.zeros(weights[0][i].shape)
+            # Number of clients
+            for j in range(len(weights)):
+                result += (float(num_samples[j])/total_N) * weights[j][i]
+            average_weight.append(result)
+        return average_weight
 
     def fine_tune(self):
          self.history = self.model.fit(
@@ -84,7 +102,7 @@ class Model:
             epochs=10,
             callbacks=self.callbacks,
             validation_split=0.1,
-            verbose=2,  # Logs once per epoch.
+            verbose=0,  # Logs once per epoch.
             batch_size=32)
 
     def train(self, round_x, round_y):
@@ -99,8 +117,16 @@ class Model:
             epochs=10,
             callbacks=self.callbacks,
             validation_split=0.1,
-            verbose=2,  # Logs once per epoch.
+            verbose=0,  # Logs once per epoch.
             batch_size=32)
+
+    def predict_proba(self, x):
+        # Transform x into features using feature extractor
+        #fit and then transform
+        x_test = self.fe.transform(x)
+        # predict using self.model.predict(x)
+        y_pred = self.model.predict_proba(x_test)
+        return [item[0] for item in list(y_pred)]
 
     def predict(self, x):
         # Transform x into features using feature extractor
@@ -115,37 +141,61 @@ class Model:
 
 
     def update_weights(self, weight_update):
-        # TODO: Algorithm to average weights
-        old_weights = self.model.get_weights()
-        new_weights = []
-        for i in range(len(old_weights)):
-            new_weights.append((old_weights[i] + weight_update[i])/2)
-        self.model.set_weights(new_weights)
+        self.model.set_weights(weight_update)
+
+
+    def update_weights_average(self, weight_update):
+        new_weight = []
+        old_weight = self.model.get_weights()
+        for i in range(len(old_weight)):
+            new_weight.append((old_weight[i] + weight_update[i])/2)
+        self.model.set_weights(new_weight)
+
+
 
 
 if __name__ == "__main__":
     test_x, test_y = get_data('./data/test.csv')
 
+    def evaluate(model_i):
+    # print(classification_report(test_y, model_i.predict(test_x)))
+    # print('F1, ROC: {}, {}:'.format(f1_score(test_y, model_i.predict(test_x)),
+    #     roc_auc_score(test_y, model_i.predict_proba(test_x))))
+        return {
+                    'f1': f1_score(test_y, model_i.predict(test_x)),
+                    'roc': roc_auc_score(test_y, model_i.predict_proba(test_x))
+        }
+
+    def compare(_models):
+        result = {}
+        for i, model in enumerate(_models):
+            result[i] = evaluate(model)
+        return result
     # Test weighted average.
-    client0_x, client0_y = get_round_data('./data/0', 0)
-    model0 = Model(client0_x, client0_y)
-    print(classification_report(test_y, model0.predict(test_x)))
+    _models = []
+    n_clients = 3
+    for i in range(n_clients):
+        client_x, client_y = get_round_data('./data/'+str(i), 0)
+        model = Model(client_x, client_y)
+        _models.append(model)
 
-    client1_x, client1_y = get_round_data('./data/1', 0)
-    model1 = Model(client1_x, client1_y)
-    print(classification_report(test_y, model1.predict(test_x)))
+    results = {}
+    for i in range(1, 5):
+        print('i: {}'.format(i))
+        weights = [i.get_weights() for i in _models]
+        n_samples = [i.x_text.shape[0] for i in _models]
+        results[i] = {'before': compare(_models)}
+        average_w = Model.compute_weighted_average(weights, n_samples)
+        for j in range(n_clients):
+            _models[j].update_weights_average(average_w)
+            client_x, client_y = get_round_data('./data/'+str(j), i)
+            model.train(client_x, client_y)
+        results[i]['after'] = compare(_models)
 
-    client2_x, client2_y = get_round_data('./data/2', 0)
-    model2 = Model(client2_x, client2_y)
-    print(classification_report(test_y, model2.predict(test_x)))
+    print(json.dumps(results, indent=2))
 
-    client3_x, client3_y = get_round_data('./data/3', 0)
-    model3 = Model(client3_x, client3_y)
-    print(classification_report(test_y, model3.predict(test_x)))
 
-    client4_x, client4_y = get_round_data('./data/4', 0)
-    model4 = Model(client4_x, client4_y)
-    print(classification_report(test_y, model4.predict(test_x)))
+    # print(classification_report(test_y, model4.predict(test_x)))
 
     # Test sequential rounds
     # round1_x, round1_y = get_round_data('./data/0', 0)
@@ -157,9 +207,6 @@ if __name__ == "__main__":
     # model.train(round2_x, round2_y)
     # y_pred = model.predict(test_x)
     # print(classification_report(test_y, y_pred))
-
-
-
 
 
 

@@ -12,7 +12,7 @@ class FeatureExtractor:
         self.NGRAM_RANGE = (1, 2)
 
         # Limit on the number of features. We use the top 1k features.
-        self.TOP_K = 500
+        self.TOP_K = 200
 
         # Whether text should be split into word or character n-grams.
         # One of 'word', 'char'.

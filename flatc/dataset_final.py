@@ -63,8 +63,6 @@ class Dataset:
     def write_data_to_file(self):
         fields = ["v1", "v2"]
         for client in range(self.n):
-            filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
             for roundno in range(self.m):
                 filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -83,7 +81,7 @@ def get_data(filename):
     return data["v1"], data["v2"]
 
 if __name__ == "__main__":
-    d = Dataset("../data/spam.csv", 0.2, 5, 3)
+    d = Dataset("../data/spam.csv", 0.2, 3, 5)
     d.train_test_split()
     test_data = pd.DataFrame({'v1': d.X_test, 'v2': d.y_test})
     test_data.to_csv('data/test.csv')
