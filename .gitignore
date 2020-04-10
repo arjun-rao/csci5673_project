@@ -132,4 +132,6 @@ dmypy.json
 .DS_Store
 .vscode/
 flatc/data
+flatc/server_data
+flatc/client_data
 flatc/centralized/data

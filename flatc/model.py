@@ -19,8 +19,8 @@ from IPython import embed
 
 from numpy.random import seed
 seed(1)
-from tensorflow import set_random_seed
-set_random_seed(2)
+import tensorflow as tf
+tf.random.set_seed(1)
 
 
 def mlp_model(input_shape):

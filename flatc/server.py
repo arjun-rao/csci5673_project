@@ -107,7 +107,7 @@ class Server:
         print("Client no : ", clientno)
         print("Round no : ", roundno)
         print("Instance count: ", instance_count)
-        outfile = "server_data" + "/" + str(clientno)+"_" + str(roundno)+"_" + str(instance_count)
+        outfile = "server_data" + "/" + str(clientno)+"_" + str(roundno)+"_" + str(instance_count) + '.npy'
         os.makedirs(os.path.dirname(outfile), exist_ok=True)
         mutex.acquire()
         try:
