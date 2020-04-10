@@ -59,9 +59,14 @@ class Server:
         return Model.compute_weighted_average(weights, instance_counts)
 
     def HandleClientRequest(self, connection):
-        msg_pkl = connection.recv(1024)
+        data = []
+        while True:
+            packet = connection.recv(10000)
+            print('receiving...')
+            if not packet: break
+            data.append(packet)
         print("Weights received!")
-        msg = pickle.loads(msg_pkl)
+        msg = pickle.loads(b"".join(data))
         if msg.id==0:
             self.WriteClientWeights(msg.weights, msg.clientno, msg.roundno, msg.instance_count)
         else:

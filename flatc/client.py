@@ -68,8 +68,8 @@ class Client:
         """
         Client sends his local weights using this function, we can modify it
         """
-        msg = Message(0, model_id, weights, clientno, roundno, instance_count)
-        msg_pkl = pickle.dumps(msg)
+        msg = Message(0, self.model_id, weights, clientno, roundno, instance_count)
+        msg_pkl = pickle.dump()
         self.ClientSocket.send(msg_pkl)
         # while True:
         # 	self.receive_updatedweights()
