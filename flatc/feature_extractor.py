@@ -32,7 +32,6 @@ class FeatureExtractor:
         # Create keyword arguments to pass to the 'tf-idf' vectorizer.
         self.kwargs = {
                 'ngram_range': self.NGRAM_RANGE,  # Use 1-grams + 2-grams.
-                'dtype': 'int32',
                 'strip_accents': 'unicode',
                 'decode_error': 'replace',
                 'analyzer': self.TOKEN_MODE,  # Split text into word tokens.

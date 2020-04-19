@@ -1,26 +1,18 @@
 import os
 import socket
+import time
 import argparse
 import pickle
 import numpy as np
 from model import *
 from dataset_final import get_round_data, get_data
+from message import Message, CLIENT_WEIGHT_UPDATE, REQUEST_GLOBAL_MSG, REPLY_GLOBAL_MSG
 from sklearn.metrics import classification_report, roc_auc_score, f1_score
 
 import tqdm
 
-SEPARATOR = "<SEPARATOR>"
+SEPARATOR = "<SEP>"
 BUFFER_SIZE = 4096 # send 4096 bytes each time step
-
-
-class Message:
-    def __init__(self, id, modelid, weights, clientno, roundno, instance_count=0):
-        self.id = id
-        self.modelid = modelid
-        self.weights = weights
-        self.clientno = clientno
-        self.roundno = roundno
-        self.instance_count = instance_count
 
 class Client:
 
@@ -59,20 +51,34 @@ class Client:
 
     def compute_new_model(self, weights):
         self.model.update_weights_average(weights)
-        self.model_id += 1
 
     def get_updatedweights(self, modelid):
         """
         Client receives the updates weights from the server
         """
-        msg = Message(1, modelid, None, None, None)
-        msg_pkl = pickle.dumps(msg)
-        self.ClientSocket.send(msg_pkl)
-        Response = self.ClientSocket.recv(1024)
-        resp = Response.decode('utf-8')
-        if resp == '':
-            return
-        compute_new_model(pickle.loads(resp))
+        self.connect()
+        self.ClientSocket.send(f"{REQUEST_GLOBAL_MSG}{SEPARATOR}{modelid}".encode())
+        received = self.ClientSocket.recv(100).decode()
+        msg = received.split(SEPARATOR)
+        if msg[0] == REPLY_GLOBAL_MSG:
+            filename, filesize, modelid = os.path.basename(msg[1]), int(msg[2]), int(msg[3])
+            self.model_id = modelid
+            progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+
+            with open(os.path.join(self.data_dir, filename), "wb") as f:
+                for _ in progress:
+                    # read 1024 bytes from the socket (receive)
+                    bytes_read = self.ClientSocket.recv(BUFFER_SIZE)
+                    if not bytes_read:
+                        # nothing is received
+                        # file transmitting is done
+                        break
+                    # write to the file the bytes we just received
+                    f.write(bytes_read)
+                    # update the progress bar
+                    progress.update(len(bytes_read))
+            print("msg received received!")
+            self.compute_new_model(np.load(os.path.join(self.data_dir, filename), allow_pickle=True))
 
     def train_round(self, round_x, round_y):
         self.model.train(round_x, round_y)
@@ -82,7 +88,9 @@ class Client:
         filesize = os.path.getsize(filepath)
         filename = os.path.basename(filepath)
         self.connect()
-        self.ClientSocket.send(f"{filename}{SEPARATOR}{filesize}".encode())
+        self.ClientSocket.send(f"{CLIENT_WEIGHT_UPDATE}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
+        print('Preparing to send file...')
+        time.sleep(1)
         # start sending the file
         progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
         with open(filepath, "rb") as f:
@@ -104,9 +112,10 @@ class Client:
         """
         Client sends his local weights using this function, we can modify it
         """
-        msg = Message(0, self.model_id, weights, clientno, roundno, instance_count)
+        msg = Message(CLIENT_WEIGHT_UPDATE, self.model_id, weights, clientno, roundno, instance_count)
         fname = os.path.join(self.data_dir, '{}_{}.pkl'.format(clientno, roundno))
-        msg_pkl = pickle.dump(msg, fname)
+        with open(fname, 'wb') as f:
+            msg_pkl = pickle.dump(msg, f)
         self.send_file(fname)
         # while True:
         # 	self.receive_updatedweights()

@@ -13,6 +13,8 @@ https://www.thepythoncode.com/article/send-receive-files-using-sockets-python
 [] Build a p2p client using existing libraries for p2p like pyp2p
 [] Integrate ML model code with p2p client
 [] Centralized - client server federated learning approach
+    [] Automate rounds and client operations.
+
 [] Identify and implement algorithms for weight update:
     a) Random peers
     b) Neighbors only

@@ -1,21 +1,21 @@
 import socket
 import threading
+import time
 import pickle
 import numpy as np
 import os
 from threading import Thread, Lock
 from model import Model
+from message import Message, CLIENT_WEIGHT_UPDATE, REQUEST_GLOBAL_MSG, REPLY_GLOBAL_MSG
+
+import tqdm
 
 mutex = Lock()
 
-class Message:
-    def __init__(self, id, modelid, weights, clientno, roundno, instance_count=0):
-        self.id = id
-        self.modelid = modelid
-        self.weights = weights
-        self.clientno = clientno
-        self.roundno = roundno
-        self.instance_count = instance_count
+SEPARATOR = "<SEP>"
+BUFFER_SIZE = 4096 # send 4096 bytes each time step
+
+
 
 class Server:
 
@@ -59,48 +59,86 @@ class Server:
         return Model.compute_weighted_average(weights, instance_counts)
 
     def HandleClientRequest(self, connection):
-        data = []
-        while True:
-            packet = connection.recv(10000)
-            print('receiving...')
-            if not packet: break
-            data.append(packet)
-        print("Weights received!")
-        msg = pickle.loads(b"".join(data))
-        if msg.id==0:
-            self.WriteClientWeights(msg.weights, msg.clientno, msg.roundno, msg.instance_count)
-        else:
-            self.ReturnUpdatedWeights(connection, msg.modelid)
+
+        received = connection.recv(50)
+        print(received)
+        received = received.decode()
+        msg = received.split(SEPARATOR)
+        if msg[0] == CLIENT_WEIGHT_UPDATE:
+            filename, filesize = os.path.basename(msg[1]), int(msg[2])
+            progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+            os.makedirs('server_data', exist_ok=True)
+            with open(os.path.join('server_data', filename), "wb") as f:
+                for _ in progress:
+                    # read 1024 bytes from the socket (receive)
+                    bytes_read = connection.recv(BUFFER_SIZE)
+                    if not bytes_read:
+                        # nothing is received
+                        # file transmitting is done
+                        break
+                    # write to the file the bytes we just received
+                    f.write(bytes_read)
+                    # update the progress bar
+                    progress.update(len(bytes_read))
+            print("msg received received!")
+            msg = pickle.load(open(os.path.join('server_data', filename), 'rb'))
+            if msg.msg_type==CLIENT_WEIGHT_UPDATE:
+                self.WriteClientWeights(msg.weights, msg.clientno, msg.roundno, msg.instance_count)
+        elif msg[0] == REQUEST_GLOBAL_MSG:
+            self.ReturnUpdatedWeights(connection, msg[1])
 
     def ReturnUpdatedWeights(self, connection, modelid):
-        if self.modelid==-1 or self.modelid==modelid:
+        if modelid !=-1 and self.modelid==modelid:
             #no model update
-            connection.send('')
+            connection.send(b'')
             return
         mutex.acquire()
         try:
-            if len(os.listdir("server_data")) == 0:
-                globalWeights = np.load("GlobalModel.npy")
-                globalWeightsPkl = pickle.dumps(globalWeights)
-                connection.send(globalWeightsPkl)
-            else:
+            client_weight_files = [item for item in os.listdir("server_data") if item.endswith('.npy')]
+            if len(client_weight_files) == 0 and os.path.isfile("server_data/GlobalModel.npy.pkl"):
+                self.send_global_weights(connection, 'server_data/GlobalModel.npy.pkl', str(self.modelid))
+            elif len(client_weight_files) != 0:
                 weights_list = []
                 instance_counts = []
                 for filename in os.listdir("server_data"):
                     if filename.endswith(".npy"):
-                        weights = np.load(filename)
-                        instance_counts.append(int(filename.split("_")[2]))
+                        weights = np.load(os.path.join("server_data", filename), allow_pickle=True)
+                        instance_counts.append(int(filename.split("_")[2].split('.')[0]))
                         weights_list.append(weights)
-                updatedWeights = process_weights(weights_list, instance_counts)
-                updatedWeightsPkl = pickle.dumps(updatedWeights)
-                connection.send(updatedWeightsPkl)
-                for filename in os.listdir("server_data"):
-                    os.remove(filename)
-                os.remove("GlobalModel.npy")
+                updatedWeights = self.process_weights(weights_list, instance_counts)
+                if os.path.isfile("server_data/GlobalModel.npy.pkl"):
+                    os.remove("server_data/GlobalModel.npy.pkl")
                 self.modelid += 1
-                np.save("GlobalModel.npy", updatedWeights)
+                np.save(open("server_data/GlobalModel.npy.pkl", 'wb'), updatedWeights)
+
+                for filename in client_weight_files:
+                    os.remove(os.path.join("server_data", filename))
+                self.send_global_weights(connection, 'server_data/GlobalModel.npy.pkl', str(self.modelid))
         finally:
             mutex.release()
+
+    def send_global_weights(self, connection, filepath, data='-1'):
+        filesize = os.path.getsize(filepath)
+        filename = os.path.basename(filepath)
+        connection.send(f"{REPLY_GLOBAL_MSG}{SEPARATOR}{filename}{SEPARATOR}{filesize}{SEPARATOR}{data}".encode())
+        time.sleep(1)
+        print('Preparing to send file...')
+        # start sending the file
+        progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+        with open(filepath, "rb") as f:
+            for _ in progress:
+                # read the bytes from the file
+                bytes_read = f.read(BUFFER_SIZE)
+                if not bytes_read:
+                    # file transmitting is done
+                    break
+                # we use sendall to assure transimission in
+                # busy networks
+                connection.sendall(bytes_read)
+                # update the progress bar
+                progress.update(len(bytes_read))
+        # close the socket
+        connection.close()
 
     def WriteClientWeights(self, weights, clientno, roundno, instance_count):
         print("Weights : ", weights)
