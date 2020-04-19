@@ -59,6 +59,8 @@ class Client:
         self.connect()
         self.ClientSocket.send(f"{REQUEST_GLOBAL_MSG}{SEPARATOR}{modelid}".encode())
         received = self.ClientSocket.recv(100).decode()
+        if received == '':
+            return False
         msg = received.split(SEPARATOR)
         if msg[0] == REPLY_GLOBAL_MSG:
             filename, filesize, modelid = os.path.basename(msg[1]), int(msg[2]), int(msg[3])
@@ -79,9 +81,12 @@ class Client:
                     progress.update(len(bytes_read))
             print("msg received received!")
             self.compute_new_model(np.load(os.path.join(self.data_dir, filename), allow_pickle=True))
+            return True
+        return False
 
     def train_round(self, round_x, round_y):
         self.model.train(round_x, round_y)
+        self.round_no += 1
 
 
     def send_file(self, filepath):
@@ -128,8 +133,8 @@ class Client:
         self.connection()
 
 
-def create_client(id):
-    client = Client('127.0.0.1', 10000, id, './client_data/')
+def create_client(id, host, port, data_dir='./client_data/'):
+    client = Client(host, port, id, data_dir)
     return client
 
 
@@ -147,10 +152,62 @@ if __name__ == '__main__':
                     'roc': roc_auc_score(test_y, model_i.predict_proba(test_x))
         }
 
-    client = create_client(1)
-    client_x, client_y = get_round_data('./data/1', 0)
+    # client = create_client(1)
+    # client_x, client_y = get_round_data('./data/1', 0)
+    # client.init(client_x, client_y)
+    # evaluate(client.model)
+
+
+    parser = argparse.ArgumentParser(description='Start a client')
+    parser.add_argument("--id",type=int, dest="id", default=1,
+                        help="ID for client. Default is 1.")
+    parser.add_argument("--host", dest="host", default="0.0.0.0",
+                        help="Host IP for client. Default is '0.0.0.0'.")
+    parser.add_argument("--port", type=int, dest="port", default=10000,
+                        help="Host Port for client. Default is '10000'.")
+    parser.add_argument("--data_dir", dest="data_dir", default='./client_data/',
+                        help="Client Data Dir to store weights. Default is './client_data/'.")
+    parser.add_argument("--train_data_dir", dest="train_data_dir", default='./data/',
+                        help="Client Data Dir to store weights. Default is './data/'.")
+    args = parser.parse_args()
+    host = args.host
+    port = args.port
+
+    print("Type 'help' to see possible options")
+    helpstr= """
+    Possible commands:
+        * evaluate - run the current model's evaluation
+        * train_round <round_no> - train the model for given round number
+        * send_weights  - send weights to param server
+        * receive_global - receive global update for weights from param server
+        * exit - to quit
+    """
+
+    client = create_client(args.id, host, port)
+    client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), 0)
     client.init(client_x, client_y)
-    evaluate(client.model)
+    print("Client created with model for round 0. Type evaluate to see performance.")
+
+
+
+    while True:
+        msg = input('> ').split(' ')
+        if msg[0] == 'exit':
+            break
+        elif msg[0] == 'help':
+            print(helpstr)
+        elif msg[0] =='evaluate':
+            print(evaluate(client.model))
+        elif msg[0] == 'send_weights':
+            client.send_weights()
+        elif msg[0] == 'train_round':
+            client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), int(msg[1]))
+            client.train_round(client_x, client_y)
+        elif msg[0] =='receive_global':
+            client.get_updatedweights(client.model_id)
+            print(evaluate(client.model))
+
+
 
 
 
