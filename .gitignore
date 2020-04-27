@@ -134,4 +134,6 @@ dmypy.json
 flatc/data
 flatc/server_data
 flatc/client_data
+flatc/peer/peer_data
+flatc/peer/data
 flatc/centralized/data

@@ -96,7 +96,7 @@ class Node(threading.Thread):
     def init(self, client_x, client_y):
         self.model = Model(client_x, client_y)
         self.round_no += 1
-    
+
     def compute_new_model(self, weights):
         self.model.update_weights_average(weights)
 
@@ -124,7 +124,7 @@ class Node(threading.Thread):
             data["__port"]      = self.port;
             data["__node"]      = type
             data["__timestamp"] = time.time()
-            
+
             message = json.dumps(data, separators=(',', ':'));
             self.dprint("Visuals sending: " + message)
             #self.udp_server.sendto(message, ('92.222.168.248', 15000))
@@ -149,6 +149,7 @@ class Node(threading.Thread):
         print("Initialisation of the TcpServer on port: " + str(self.port) + " on node (" + self.id + ")")
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         #self.sock.bind((self.host, self.port))
         self.sock.bind(('', self.port))
         self.sock.settimeout(10.0)
@@ -212,41 +213,59 @@ class Node(threading.Thread):
     def receive_from_n_random_nodes(self, n):
         rand_indices=np.random.choice(len(self.nodesOut), size=n, replace=False)
         for index in rand_indices:
-            self.receive_from_node(self.nodesOut[index]) 
+            self.receive_from_node(self.nodesOut[index])
 
-    def receive_from_random_nodes(self):
-        num_rand_nodes=random.randint(1,len(self.nodesOut))
-        rand_indices=np.random.choice(len(self.nodesOut), size=num_rand_nodes, replace=False)
+    def receive_from_random_node(self):
+        rand_indices=np.random.choice(len(self.nodesOut), size=1, replace=False)
         for index in rand_indices:
-            self.receive_from_node(self.nodesOut[index])       
+            self.receive_from_node(self.nodesOut[index])
 
     def receive_from_node(self, conn):
         """
         Receives weights
         """
-        conn.sock.send(f"{REQUEST_PEER_MSG}".encode())
-        received = conn.sock.recv(100).decode()
+        conn.listening.clear()
+        while conn.listening.isSet():
+            conn.listening.clear()
+            continue
+        conn.sock.sendall(f"{REQUEST_PEER_MSG}".encode())
+        received = conn.sock.recv(50).decode()
         if received == '':
             return False
         msg = received.split(SEPARATOR)
         if msg[0] == REPLY_PEER_MSG:
             filename, filesize = os.path.basename(msg[1]), int(msg[2])
             progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
-
+            total = 0
             with open(os.path.join(self.data_dir, filename), "wb") as f:
-                for _ in progress:
+                while total < filesize:
                     # read 1024 bytes from the socket (receive)
-                    bytes_read = conn.sock.recv(BUFFER_SIZE)
+                    conn.sock.settimeout(2)
+                    try:
+                        bytes_read = conn.sock.recv(BUFFER_SIZE)
+                    except socket.timeout:
+                        self.receive_from_node(conn)
+
                     if not bytes_read:
                         # nothing is received
                         # file transmitting is done
                         break
                     # write to the file the bytes we just received
                     f.write(bytes_read)
+                    total += len(bytes_read)
+                    print(f'r{total}/{filesize}')
                     # update the progress bar
                     progress.update(len(bytes_read))
+                    if total == filesize:
+                        break
+            conn.listening.set()
             print("msg received received!")
-            self.compute_new_model(np.load(os.path.join(self.data_dir, filename), allow_pickle=True))
+            try:
+                msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
+                self.compute_new_model(msg.weights) # also has msg.clientno, msg.roundno, msg.instance_count
+            except:
+                print('Failed to get weights')
+                pass
             return True
         return False
 
@@ -275,7 +294,7 @@ class Node(threading.Thread):
         if n in self.nodesIn or n in self.nodesOut:
             try:
                 n.send(self.create_message( data ))
-                
+
             except Exception as e:
                 self.dprint("TcpServer.send2node: Error while sending data to the node (" + str(e) + ")");
         else:
@@ -294,9 +313,10 @@ class Node(threading.Thread):
             if ( node.get_host() == host and node.get_port() == port ):
                 print("connect_with_node: Already connected with this node.")
                 return True
-        
+
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.dprint("connecting to %s port %s" % (host, port))
             sock.connect((host, port))
 
@@ -339,8 +359,8 @@ class Node(threading.Thread):
                 connection, client_address = self.sock.accept()
 
                 # TODO: Startup first communication in which the details of the node is communicated
-                # TODO: 
-                
+                # TODO:
+
                 thread_client = self.create_new_connection(connection, client_address, self.callback)
                 thread_client.start()
                 self.nodesIn.append(thread_client)
@@ -378,7 +398,7 @@ class Node(threading.Thread):
         print("TcpServer stopped")
 
         # For visuals!
-        self.send_visuals("node-closed", { "host": self.host, "port": self.port}) 
+        self.send_visuals("node-closed", { "host": self.host, "port": self.port})
 
     # Started to implement the events, so this class can be extended with a better class
     # In the event a callback can be called!
@@ -389,7 +409,7 @@ class Node(threading.Thread):
 
         # For visuals!
         self.send_visuals("node-connection-from", { "host": node.host, "port": node.port })
-        
+
     def event_connected_with_node(self, node):
         self.dprint("event_node_connected: " + node.getName())
 
@@ -433,8 +453,9 @@ class NodeConnection(threading.Thread):
         self.sock = sock
         self.clientAddress = clientAddress
         self.callback = callback
+        self.listening = threading.Event()
         self.terminate_flag = threading.Event()
-
+        self.listening.set()
         # Variable for parsing the incoming json messages
         self.buffer = ""
 
@@ -443,14 +464,14 @@ class NodeConnection(threading.Thread):
         id.update(t.encode('ascii'))
         self.id = id.hexdigest()
 
-        self.nodeServer.dprint("NodeConnection.send: Started with client (" + self.id + ") '" + self.host + ":" + str(self.port) + "'")        
+        self.nodeServer.dprint("NodeConnection.send: Started with client (" + self.id + ") '" + self.host + ":" + str(self.port) + "'")
 
     def get_host(self):
         return self.host
 
     def get_port(self):
         return self.port
-    
+
     # Send data to the node. The data should be a python variable
     # This data is converted into json and send.
     def send(self, data):
@@ -475,18 +496,22 @@ class NodeConnection(threading.Thread):
 
     # Stop the node client. Please make sure you join the thread.
     def stop(self):
-        self.terminate_flag.set()        
+        self.terminate_flag.set()
 
     # Required to implement the Thread. This is the main loop of the node client.
     def run(self):
 
         # Timeout, so the socket can be closed when it is dead!
-        self.sock.settimeout(10.0)
+        self.sock.settimeout(2)
         #----------------------------------------------------------
         while not self.terminate_flag.is_set(): # Check whether the thread needs to be closed
             line = ""
             try:
-                line = self.sock.recv(50)      
+                if self.listening.wait():
+                    line = self.sock.recv(50)
+                else:
+                    time.sleep(1)
+                    continue
             except socket.timeout:
                 pass
 
@@ -496,36 +521,68 @@ class NodeConnection(threading.Thread):
 
             if line != "":
                 try:
-                    line = line.decode('utf-8')
+                    if self.listening.isSet():
+                        line = line.decode()
+                    else:
+                        time.sleep(1)
+                        continue
                 except:
-                    print("NodeConnection: Decoding line error")
+                    print(f"NodeConnection: Decoding line error: {line}")
+                    continue
+                print(line)
                 msg = line.split(SEPARATOR)
                 if msg[0]==REQUEST_PEER_MSG:
-                    weigths = self.nodeServer.model.get_weights()
-                    filepath = os.path.join(self.nodeServer.data_dir, '{}_{}.pkl'.format(self.nodeServer.client_no, self.nodeServer.round_no))
-                    msg = Message(REPLY_PEER_MSG, weights, self.nodeServer.peer_no, self.nodeServer.round_no, self.nodeServer.get_instance_count())
+                    weights = self.nodeServer.model.get_weights()
+                    filepath = os.path.join(self.nodeServer.data_dir, '{}_{}.pkl'.format(self.nodeServer.peer_no, self.nodeServer.round_no))
+                    msg = Message(REPLY_PEER_MSG, weights, self.nodeServer.peer_no, self.nodeServer.round_no, self.nodeServer.model.get_instance_count())
                     with open(filepath, 'wb') as f:
                         msg_pkl = pickle.dump(msg, f)
                     filesize = os.path.getsize(filepath)
                     filename = os.path.basename(filepath)
-                    self.sock.send(f"{REPLY_PEER_MSG}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
+                    self.sock.sendall(f"{REPLY_PEER_MSG}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
                     print('Preparing to send file...')
-                    time.sleep(1)
                     # start sending the file
                     progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+                    self.listening.clear()
+                    time.sleep(1)
+                    sent_bytes = 0
                     with open(filepath, "rb") as f:
-                        for _ in progress:
+                        while sent_bytes < filesize:
                             # read the bytes from the file
                             bytes_read = f.read(BUFFER_SIZE)
                             if not bytes_read:
                                 # file transmitting is done
                                 break
+                            sent_bytes += len(bytes_read)
                             # we use sendall to assure transimission in
                             # busy networks
                             self.sock.sendall(bytes_read)
+                            time.sleep(0.1)
+                            print(f'sending...{sent_bytes}/{filesize}')
                             # update the progress bar
                             progress.update(len(bytes_read))
-        #----------------------------------------------------------------------        
+                    print('File Sent')
+                    self.listening.set()
+
+                # elif msg[0] == REPLY_PEER_MSG:
+                #     filename, filesize = os.path.basename(msg[1]), int(msg[2])
+                #     progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+
+                #     with open(os.path.join(self.nodeServer.data_dir, filename), "wb") as f:
+                #         for _ in progress:
+                #             # read 1024 bytes from the socket (receive)
+                #             bytes_read = self.sock.recv(BUFFER_SIZE)
+                #             if not bytes_read:
+                #                 # nothing is received
+                #                 # file transmitting is done
+                #                 break
+                #             # write to the file the bytes we just received
+                #             f.write(bytes_read)
+                #             # update the progress bar
+                #             progress.update(len(bytes_read))
+                #     print("msg received received!")
+                #     self.nodeServer.compute_new_model(np.load(os.path.join(self.nodeServer.data_dir, filename), allow_pickle=True))
+        #----------------------------------------------------------------------
                 # index = self.buffer.find("-TSN")
                 # while ( index > 0 ):
                 #     message = self.buffer[0:index]
@@ -533,14 +590,14 @@ class NodeConnection(threading.Thread):
 
                 #     try:
                 #         data = json.loads(message)
-                        
+
                 #     except Exception as e:
                 #         print("NodeConnection: Data could not be parsed (%s) (%s)" % (line, str(e)) )
 
                 #     if ( self.check_message(data) ):
                 #         self.nodeServer.message_count_recv = self.nodeServer.message_count_recv + 1
                 #         self.nodeServer.event_node_message(self, data)
-                        
+
                 #         if (self.callback != None):
                 #             self.callback("NODEMESSAGE", self.nodeServer, self, data)
 
@@ -652,20 +709,26 @@ if __name__ == '__main__':
 
     while True:
         msg = input('> ').split(' ')
-        if msg[0] == 'exit':
-            break
-        elif msg[0] == 'help':
-            print(helpstr)
-        elif msg[0] =='evaluate':
-            print(evaluate(peer.model))
-        elif msg[0] == 'random_update':
-            peer.receive_from_random_nodes()
-        elif msg[0] == 'random_update_n':
-            peer.receive_from_n_random_nodes(int(msg[1]))
-        elif msg[0] == 'connect':
-            peer.connect_with_node(msg[1], int(msg[2]))
-        elif msg[0] == 'get_weights':
-            print(peer.model.get_weights())
-        elif msg[0] == 'train_round':
-            client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), int(msg[1]))
-            client.train_round(client_x, client_y)
+        try:
+            if msg[0] == 'exit':
+                break
+            elif msg[0] == 'help':
+                print(helpstr)
+            elif msg[0] =='evaluate':
+                print(evaluate(peer.model))
+            elif msg[0] == 'random_update':
+                peer.receive_from_random_node()
+            elif msg[0] == 'random_update_n':
+                peer.receive_from_n_random_nodes(int(msg[1]))
+            elif msg[0] == 'cl':
+                peer.connect_with_node("localhost", int(msg[1]))
+            elif msg[0] == 'connect':
+                peer.connect_with_node(msg[1], int(msg[2]))
+            elif msg[0] == 'get_weights':
+                print(peer.model.get_weights())
+            elif msg[0] == 'train_round':
+                client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), int(msg[1]))
+                peer.train_round(client_x, client_y)
+        except:
+            traceback.print_exc()
+            continue
