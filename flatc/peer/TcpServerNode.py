@@ -224,8 +224,8 @@ class Node(threading.Thread):
         """
         Receives weights
         """
-        conn.send(f"{REQUEST_PEER_MSG}".encode())
-        received = conn.recv(100).decode()
+        conn.sock.send(f"{REQUEST_PEER_MSG}".encode())
+        received = conn.sock.recv(100).decode()
         if received == '':
             return False
         msg = received.split(SEPARATOR)
@@ -236,7 +236,7 @@ class Node(threading.Thread):
             with open(os.path.join(self.data_dir, filename), "wb") as f:
                 for _ in progress:
                     # read 1024 bytes from the socket (receive)
-                    bytes_read = conn.recv(BUFFER_SIZE)
+                    bytes_read = conn.sock.recv(BUFFER_SIZE)
                     if not bytes_read:
                         # nothing is received
                         # file transmitting is done
@@ -645,6 +645,7 @@ if __name__ == '__main__':
     peer = Node(host, port, None, args.id, args.data_dir)
     peer_x, peer_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), 0)
     peer.init(peer_x, peer_y)
+    peer.start()
     print("Peer created with model for round 0. Type evaluate to see performance.")
 
 
@@ -657,10 +658,14 @@ if __name__ == '__main__':
             print(helpstr)
         elif msg[0] =='evaluate':
             print(evaluate(peer.model))
-        elif msg[0] == 'random update':
+        elif msg[0] == 'random_update':
             peer.receive_from_random_nodes()
-        elif msg[0] == 'random update n':
+        elif msg[0] == 'random_update_n':
             peer.receive_from_n_random_nodes(int(msg[1]))
+        elif msg[0] == 'connect':
+            peer.connect_with_node(msg[1], int(msg[2]))
+        elif msg[0] == 'get_weights':
+            print(peer.model.get_weights())
         elif msg[0] == 'train_round':
             client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), int(msg[1]))
             client.train_round(client_x, client_y)
