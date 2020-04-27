@@ -1,18 +1,3 @@
-#######################################################################################################################
-# AVANS - BLOCKCHAIN - MINOR MAD                                                                                      #
-#                                                                                                                     #
-# Author: Maurice Snoeren                                                                                             #
-# Version: 0.1 beta (use at your own risk)                                                                            #
-#                                                                                                                     #
-# TcpServerNode implements a peer-to-peer network node based on tcp/ip sockets.                                       #
-# TcpServerNode creates a TCP/IP server on the port you have given. It accepts incoming nodes and put these into its  #
-# internal datastructure. When nodes disconnect, the nodes are removed. Events are generated when nodes are connected #
-# , when nodes leave and when nodes have data. Furthermore, this class is able to connect to other nodes. Sending     #
-# data to these nodes is easy as well. The datastructure is up to you and how you implement the protocol to form the  #
-# decentralized peer-to-peer network. This class is at you disposal to use within your code to speed up the           #
-# development.                                                                                                        #
-#######################################################################################################################
-
 import socket
 import sys
 import json
@@ -218,6 +203,7 @@ class Node(threading.Thread):
     def receive_from_random_node(self):
         rand_indices=np.random.choice(len(self.nodesOut), size=1, replace=False)
         for index in rand_indices:
+            print(f'Requesting from node: {self.nodesOut[index].port}');
             self.receive_from_node(self.nodesOut[index])
 
     def receive_from_node(self, conn):
@@ -303,6 +289,7 @@ class Node(threading.Thread):
     # Make a connection with another node that is running on host with port.
     # When the connection is made, an event is triggered CONNECTEDWITHNODE.
     def connect_with_node(self, host, port):
+        print("self(" + self.host + ", " + str(self.port) + ")")
         print("connect_with_node(" + host + ", " + str(port) + ")")
         if ( host == self.host and port == self.port ):
             print("connect_with_node: Cannot connect with yourself!!")
@@ -677,8 +664,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Start a peer')
     parser.add_argument("--id",type=int, dest="id", default=1,
                         help="ID for peer. Default is 1.")
-    parser.add_argument("--host", dest="host", default="0.0.0.0",
-                        help="Host IP for peer. Default is '0.0.0.0'.")
+    parser.add_argument("--host", dest="host", default="localhost",
+                        help="Host IP for peer. Default is 'localhost'.")
     parser.add_argument("--port", type=int, dest="port", default=10000,
                         help="Host Port for peer. Default is '10000'.")
     parser.add_argument("--data_dir", dest="data_dir", default='peer_data/',
