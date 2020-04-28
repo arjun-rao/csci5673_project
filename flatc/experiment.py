@@ -1,6 +1,10 @@
 from client import *
+train_data_dir = 'data/c2_r5'
+output = '2_clients_centralized.csv'
+max_peers = 2
+rounds = 4
 
-test_x, test_y = get_data('data/test.csv')
+test_x, test_y = get_data(f'{train_data_dir}/test.csv')
 
 def evaluate(client, fname='results.csv'):
     data = {
@@ -20,16 +24,12 @@ def evaluate(client, fname='results.csv'):
 
 
 def init_peer(peer):
-    peer_x, peer_y = get_round_data(os.path.join('data/', f'{peer.client_no}'), 0)
+    peer_x, peer_y = get_round_data(os.path.join(train_data_dir, f'{peer.client_no}'), 0)
     peer.init(peer_x, peer_y)
     print(f"Peer {peer.client_no} created with model for round 0.")
     # print(evaluate(peer, output))
 
 
-output = '2_clients_centralized.csv'
-train_data_dir = 'data/'
-max_peers = 2
-rounds = 4
 peers = []
 
 
@@ -73,7 +73,6 @@ for round_no in range(rounds):
         print(f'Send weights from peer: {i}')
         peer.send_weights()
         time.sleep(1)
-        print(evaluate(peer, output))
 
     # For each peer get global model
     for i in range(max_peers):

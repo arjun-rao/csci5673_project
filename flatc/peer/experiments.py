@@ -8,7 +8,14 @@ from sklearn.metrics import classification_report, roc_auc_score, f1_score
 import time
 
 
-test_x, test_y = get_data('data/test.csv')
+output = 'experiment_6.csv'
+train_data_dir = 'data/c5_r5'
+peer_data_dir = 'peer_data/'
+start_port = 9000
+max_peers = 5
+rounds = 4 # starts from 0. so 4 => 5 rounds.
+
+test_x, test_y = get_data(f'{train_data_dir}/test.csv')
 
 def evaluate(client, fname='results.csv'):
     data = {
@@ -26,17 +33,6 @@ def evaluate(client, fname='results.csv'):
             df.to_csv(fname,index=False, mode='a', header=f.tell()==0)
     return data
 
-def init_peer(peer):
-    peer_x, peer_y = get_round_data(os.path.join('data/', f'{peer.peer_no}'), 0)
-    peer.init(peer_x, peer_y)
-    peer.start()
-    print(f"Peer {id} created with model for round 0.")
-    print(evaluate(peer, output))
-
-output = 'experiment_2.csv'
-train_data_dir = 'data/'
-max_peers = 5
-rounds = 4
 peers = []
 
 def reconnect_peers(peers, max_peers):
@@ -46,7 +42,7 @@ def reconnect_peers(peers, max_peers):
         for j in range(max_peers):
             if i == j:
                 continue
-            peers[i].connect_with_node("localhost", 9000 + j)
+            peers[i].connect_with_node("localhost", start_port + j)
             time.sleep(0.5)
         time.sleep(1)
 
@@ -61,10 +57,15 @@ def exchange_weights(peers, max_peers):
     # For each peer exchange weights
     for i in range(max_peers):
         peer = peers[i]
-        all_ports = [peers[j].port for j in range(max_peers) if j != i]
         print(f'Receiving weights to peer: {i}')
         # Change this for different experiments
-        ports = list(np.random.choice(all_ports, size=1, replace=False))
+        # all_ports = [peers[j].port for j in range(max_peers) if j != i]
+        # ports = list(np.random.choice(all_ports, size=max_peers-1, replace=False))
+
+        # For ring topology
+        all_ports = [peers[j].port for j in range(max_peers)]
+        ports = [all_ports[all_ports.index(peer.port) - 1]]
+
         while len(ports) > 0:
             port = ports.pop(0)
             print(f'Receiving update from node: {port} for peer: {i}')
@@ -79,7 +80,7 @@ def exchange_weights(peers, max_peers):
 
 # initialize peers
 for i in range(max_peers):
-    peer = Node('localhost', 9000 + i, None, i, 'peer_data/')
+    peer = Node('localhost', start_port + i, None, i, peer_data_dir)
     init_peer(peer)
     peers.append(peer)
 

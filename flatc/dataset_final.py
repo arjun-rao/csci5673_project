@@ -64,7 +64,7 @@ class Dataset:
         fields = ["v1", "v2"]
         for client in range(self.n):
             for roundno in range(self.m):
-                filename = "data" + "/" + str(client)+"/"+str(roundno)+".csv"
+                filename = "data/c4_r5/" + "/" + str(client)+"/"+str(roundno)+".csv"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, 'w', encoding="utf-8", newline='') as csvfile:
                     csvwriter = csv.writer(csvfile)
@@ -81,10 +81,10 @@ def get_data(filename):
     return data["v1"], data["v2"]
 
 if __name__ == "__main__":
-    d = Dataset("../data/spam.csv", 0.2, 2, 5)
+    d = Dataset("../data/spam.csv", 0.2, 4, 5)
     d.train_test_split()
     test_data = pd.DataFrame({'v1': d.X_test, 'v2': d.y_test})
-    test_data.to_csv('data/test.csv')
+    test_data.to_csv('data/c4_r5/test.csv')
     d.client_split()
     d.train_step_split()
     d.write_data_to_file()
