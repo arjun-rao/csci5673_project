@@ -1,7 +1,7 @@
 from client import *
-train_data_dir = 'data/c2_r5'
-output = '2_clients_centralized.csv'
-max_peers = 2
+train_data_dir = 'data/c5_r5'
+output = '4_clients_centralized.csv'
+max_peers = 4
 rounds = 4
 
 test_x, test_y = get_data(f'{train_data_dir}/test.csv')

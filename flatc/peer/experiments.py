@@ -8,11 +8,11 @@ from sklearn.metrics import classification_report, roc_auc_score, f1_score
 import time
 
 
-output = 'experiment_6.csv'
+output = 'experiment_8.csv'
 train_data_dir = 'data/c5_r5'
-peer_data_dir = 'peer_data/'
-start_port = 9000
-max_peers = 5
+peer_data_dir = 'peer_data/ex8'
+start_port = 7000
+max_peers = 3
 rounds = 4 # starts from 0. so 4 => 5 rounds.
 
 test_x, test_y = get_data(f'{train_data_dir}/test.csv')
@@ -59,12 +59,12 @@ def exchange_weights(peers, max_peers):
         peer = peers[i]
         print(f'Receiving weights to peer: {i}')
         # Change this for different experiments
-        # all_ports = [peers[j].port for j in range(max_peers) if j != i]
-        # ports = list(np.random.choice(all_ports, size=max_peers-1, replace=False))
+        all_ports = [peers[j].port for j in range(max_peers) if j != i]
+        ports = list(np.random.choice(all_ports, size=max_peers-1, replace=False))
 
         # For ring topology
-        all_ports = [peers[j].port for j in range(max_peers)]
-        ports = [all_ports[all_ports.index(peer.port) - 1]]
+        # all_ports = [peers[j].port for j in range(max_peers)]
+        # ports = [all_ports[all_ports.index(peer.port) - 1]]
 
         while len(ports) > 0:
             port = ports.pop(0)
