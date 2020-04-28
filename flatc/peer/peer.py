@@ -199,19 +199,28 @@ class Node(threading.Thread):
 
     #-----------------------------------------------------
 
-    def receive_from_random_index(self, index):
-        print(f'Requesting from node: {self.nodesOut[index].port}');
-        port = self.nodesOut[index].port
+    def get_connection_for_port(self, port):
+        host = 'localhost'
         try:
-            if self.receive_from_node(self.nodesOut[index]):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.dprint("connecting to %s port %s" % (host, port))
+            sock.connect((host, port))
+            return sock
+        except Exception as e:
+            self.dprint("TcpServer.connect_with_node: Could not connect with node. (" + str(e) + ")")
+        return None
+
+    def receive_from_port(self, port):
+        print(f'Requesting from node: {port}');
+        connection = self.get_connection_for_port(port)
+        try:
+            if self.receive_from_node(connection):
                 print("Successfully received weights")
-                self.nodesOut[index].stop()
-                del self.nodesOut[index]
                 print("Connection Closed")
                 return True, port
         except:
-            self.nodesOut[index].stop()
-            del self.nodesOut[index]
+            connection.close()
             return False, port
         return False, port
 
@@ -237,17 +246,14 @@ class Node(threading.Thread):
         Receives weights
         """
         try:
-            conn.listening.clear()
-            while conn.listening.isSet():
-                conn.listening.clear()
-                continue
-            conn.sock.sendall(f"{REQUEST_PEER_MSG}".encode())
+            conn.sendall(f"{REQUEST_PEER_MSG}".encode())
             self.message_count_send += 1
-            received = conn.sock.recv(50).decode()
+            received = conn.recv(BUFFER_SIZE).decode()
             self.message_count_recv += 1
             if received == '':
                 return False
             msg = received.split(SEPARATOR)
+            conn.settimeout(None)
             if msg[0] == REPLY_PEER_MSG:
                 filename, filesize = os.path.basename(msg[1]), int(msg[2])
                 progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
@@ -255,21 +261,21 @@ class Node(threading.Thread):
                 with open(os.path.join(self.data_dir, filename), "wb") as f:
                     while total <= filesize:
                         # read 1024 bytes from the socket (receive)
-                        conn.sock.settimeout(None)
+                        conn.settimeout(None)
                         try:
-                            bytes_read = conn.sock.recv(BUFFER_SIZE)
+                            bytes_read = conn.recv(min(filesize - total, BUFFER_SIZE))
                         except socket.timeout:
-                            self.receive_from_node(conn)
+                            return False
 
                         if not bytes_read:
                             # nothing is received
                             # file transmitting is done
                             f.close()
                             progress.close()
-                            msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
-                            self.compute_new_model(msg.weights)
+                            # msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
+                            # self.compute_new_model(msg.weights)
+                            self.compute_new_model(np.load(os.path.join(self.data_dir, filename), allow_pickle=True))
                             print("msg received received!")
-                            conn.stop()
                             return True
                         # write to the file the bytes we just received
                         f.write(bytes_read)
@@ -279,9 +285,6 @@ class Node(threading.Thread):
                         # update the progress bar
                         progress.update(len(bytes_read))
                         time.sleep(0.05)
-                # msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
-                # self.compute_new_model(msg.weights) # also has msg.clientno, msg.roundno, msg.instance_count
-                # print("msg received received!")
                 return False
         except:
             traceback.print_exc()
@@ -331,7 +334,7 @@ class Node(threading.Thread):
         print("connect_with_node(" + host + ", " + str(port) + ")")
         if ( host == self.host and port == self.port ):
             print("connect_with_node: Cannot connect with yourself!!")
-            return;
+            return False;
 
         # Check if node is already connected with this node!
         for node in self.nodesOut:
@@ -359,9 +362,10 @@ class Node(threading.Thread):
                 self.callback("CONNECTEDWITHNODE", self, thread_client, {})
 
             self.print_connections()
-
+            return True
         except Exception as e:
             self.dprint("TcpServer.connect_with_node: Could not connect with node. (" + str(e) + ")")
+        return False
 
     # Disconnect with a node. It sends a last message to the node!
     def disconnect_with_node(self, node):
@@ -534,7 +538,7 @@ class NodeConnection(threading.Thread):
         # Timeout, so the socket can be closed when it is dead!
         self.sock.settimeout(2)
         #----------------------------------------------------------
-        while not self.terminate_flag.is_set(): # Check whether the thread needs to be closed
+        while not self.terminate_flag.is_set() and self.listening.wait(): # Check whether the thread needs to be closed
             line = ""
             try:
                 if self.listening.wait():
@@ -564,10 +568,12 @@ class NodeConnection(threading.Thread):
                 self.nodeServer.message_count_recv += 1
                 if msg[0]==REQUEST_PEER_MSG:
                     weights = self.nodeServer.model.get_weights()
-                    filepath = os.path.join(self.nodeServer.data_dir, '{}_{}.pkl'.format(self.nodeServer.peer_no, self.nodeServer.round_no))
+                    filepath = os.path.join(self.nodeServer.data_dir, '{}_{}.npy'.format(self.nodeServer.peer_no, self.nodeServer.round_no))
                     msg = Message(REPLY_PEER_MSG, weights, self.nodeServer.peer_no, self.nodeServer.round_no, self.nodeServer.model.get_instance_count())
-                    with open(filepath, 'wb') as f:
-                        msg_pkl = pickle.dump(msg, f)
+                    # with open(filepath, 'wb') as f:
+                    #     msg_pkl = pickle.dump(msg, f)
+                    #     f.close()
+                    np.save(filepath, weights)
                     filesize = os.path.getsize(filepath)
                     filename = os.path.basename(filepath)
                     self.sock.sendall(f"{REPLY_PEER_MSG}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
@@ -576,7 +582,7 @@ class NodeConnection(threading.Thread):
                     # start sending the file
                     progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
                     self.listening.clear()
-                    time.sleep(1)
+                    time.sleep(2)
                     sent_bytes = 0
                     with open(filepath, "rb") as f:
                         while sent_bytes <= filesize:
@@ -585,6 +591,7 @@ class NodeConnection(threading.Thread):
                             if not bytes_read:
                                 # file transmitting is done
                                 progress.close()
+                                f.close()
                                 print('File Sent')
                                 self.sock.settimeout(None)
                                 self.sock.close()
@@ -595,7 +602,7 @@ class NodeConnection(threading.Thread):
                             # busy networks
                             self.sock.sendall(bytes_read)
                             self.nodeServer.message_count_send += 1
-                            time.sleep(0.05)
+                            time.sleep(0.1)
                             print(f'sending...{sent_bytes}/{filesize}')
                             # update the progress bar
                             progress.update(len(bytes_read))
@@ -777,10 +784,10 @@ if __name__ == '__main__':
                         time.sleep(2)
                         peer.connect_with_node("localhost", port)
             elif msg[0] == 'random_update_n':
-                rand_indices=np.random.choice(len(peer.nodesOut), size=int(msg[1]), replace=False)
-                for index in rand_indices:
+                ports = np.random.choice(len(peer.nodesOut), size=int(msg[1]), replace=False)
+                for port in ports:
                     while True:
-                        if peer.receive_from_random_index(index):
+                        if peer.receive_from_port(port):
                             break
                         time.sleep(2)
             elif msg[0] == 'cl':

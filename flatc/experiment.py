@@ -23,7 +23,7 @@ def init_peer(peer):
     peer_x, peer_y = get_round_data(os.path.join('data/', f'{peer.client_no}'), 0)
     peer.init(peer_x, peer_y)
     print(f"Peer {peer.client_no} created with model for round 0.")
-    print(evaluate(peer, output))
+    # print(evaluate(peer, output))
 
 
 output = '5_clients_centralized.csv'
@@ -45,7 +45,7 @@ for i in range(max_peers):
     print(f'Send weights from peer: {i}')
     peer.send_weights()
     time.sleep(1)
-    print(evaluate(peer, output))
+    # print(evaluate(peer, output))
 
 # For each peer get global model
 for i in range(max_peers):

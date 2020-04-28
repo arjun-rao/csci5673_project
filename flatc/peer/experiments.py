@@ -33,7 +33,7 @@ def init_peer(peer):
     print(f"Peer {id} created with model for round 0.")
     print(evaluate(peer, output))
 
-output = '5_clients_updates_2_peers.csv'
+output = 'experiment_3.csv'
 train_data_dir = 'data/'
 max_peers = 5
 rounds = 4
@@ -44,6 +44,8 @@ def reconnect_peers(peers, max_peers):
     for i in range(max_peers):
         print(f'Connecting nodes to peer: {i}')
         for j in range(max_peers):
+            if i == j:
+                continue
             peers[i].connect_with_node("localhost", 9000 + j)
             time.sleep(0.5)
         time.sleep(1)
@@ -55,6 +57,25 @@ def init_peer(peer):
     print(f"Peer {peer.peer_no} created with model for round 0.")
 
 
+def exchange_weights(peers, max_peers):
+    # For each peer exchange weights
+    for i in range(max_peers):
+        peer = peers[i]
+        all_ports = [peers[j].port for j in range(max_peers) if j != i]
+        print(f'Receiving weights to peer: {i}')
+        # Change this for different experiments
+        ports = list(np.random.choice(all_ports, size=2, replace=False))
+        while len(ports) > 0:
+            port = ports.pop(0)
+            print(f'Receiving update from node: {port} for peer: {i}')
+            status, port = peer.receive_from_port(port)
+            if not status:
+                time.sleep(1)
+                peer.connect_with_node("localhost", port)
+                ports.append(port)
+            time.sleep(1)
+        time.sleep(2)
+        print(evaluate(peer, output))
 
 # initialize peers
 for i in range(max_peers):
@@ -64,22 +85,9 @@ for i in range(max_peers):
 
 
 # Connect peers to each other
-reconnect_peers(peers, max_peers)
+exchange_weights(peers, max_peers)
 
-# For each peer exchange weights
-for i in range(max_peers):
-    peer = peers[i]
-    print(f'Receiving weights to peer: {i}')
-    while True:
-        status, port = peer.receive_from_random_node()
-        if status:
-            peer.connect_with_node("localhost", port)
-            break
-        else:
-            time.sleep(2)
-            peer.connect_with_node("localhost", port)
-    time.sleep(1)
-    print(evaluate(peer, output))
+
 
 for round_no in range(rounds):
     print(f"Performing experiment round {round_no}")
@@ -91,24 +99,7 @@ for round_no in range(rounds):
         peer.train_round(client_x, client_y)
     round_no += 1
 
-    # For each peer exchange weights
-    for i in range(max_peers):
-        peer = peers[i]
-        print(f'Receiving weights to peer: {i}')
-        # Change this for different experiments
-        rand_indices=np.random.choice(len(peer.nodesOut), size=2, replace=False)
-        for index in rand_indices:
-            while True:
-                status, port = peer.receive_from_random_index(index)
-                if status:
-                    peer.connect_with_node("localhost", port)
-                    break
-                else:
-                    time.sleep(2)
-                    peer.connect_with_node("localhost", port)
-        time.sleep(1)
-        print(evaluate(peer, output))
-
+    exchange_weights(peers, max_peers)
 
 
 print('Experiment complete')
