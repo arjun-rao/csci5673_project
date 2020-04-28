@@ -26,9 +26,9 @@ def init_peer(peer):
     # print(evaluate(peer, output))
 
 
-output = '5_clients_centralized.csv'
+output = '2_clients_centralized.csv'
 train_data_dir = 'data/'
-max_peers = 5
+max_peers = 2
 rounds = 4
 peers = []
 
