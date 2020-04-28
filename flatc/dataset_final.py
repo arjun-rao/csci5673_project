@@ -81,7 +81,7 @@ def get_data(filename):
     return data["v1"], data["v2"]
 
 if __name__ == "__main__":
-    d = Dataset("../data/spam.csv", 0.2, 3, 5)
+    d = Dataset("../data/spam.csv", 0.2, 5, 5)
     d.train_test_split()
     test_data = pd.DataFrame({'v1': d.X_test, 'v2': d.y_test})
     test_data.to_csv('data/test.csv')

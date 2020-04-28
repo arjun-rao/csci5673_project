@@ -15,6 +15,7 @@ import numpy as np
 from dataset_final import get_round_data, get_data
 from message import Message, CLIENT_WEIGHT_UPDATE, REQUEST_PEER_MSG, REPLY_PEER_MSG
 from sklearn.metrics import classification_report, roc_auc_score, f1_score
+import pandas as pd
 
 import tqdm
 from model import *
@@ -44,6 +45,7 @@ class Node(threading.Thread):
         self.port = port
         self.peer_no = peer_no
         self.round_no = -1
+
         self.model = None
         # self.model_id = -1 not required
         self.data_dir = os.path.join(data_dir, str(peer_no))
@@ -195,64 +197,72 @@ class Node(threading.Thread):
 
     #-----------------------------------------------------
 
-    def receive_from_n_random_nodes(self, n):
-        rand_indices=np.random.choice(len(self.nodesOut), size=n, replace=False)
-        for index in rand_indices:
-            self.receive_from_node(self.nodesOut[index])
+    def receive_from_random_index(self, index):
+        print(f'Requesting from node: {self.nodesOut[index].port}');
+        try:
+            return self.receive_from_node(self.nodesOut[index])
+        except:
+                return False
 
     def receive_from_random_node(self):
         rand_indices=np.random.choice(len(self.nodesOut), size=1, replace=False)
         for index in rand_indices:
             print(f'Requesting from node: {self.nodesOut[index].port}');
-            self.receive_from_node(self.nodesOut[index])
+            try:
+                return self.receive_from_node(self.nodesOut[index])
+            except:
+                return False
 
     def receive_from_node(self, conn):
         """
         Receives weights
         """
-        conn.listening.clear()
-        while conn.listening.isSet():
+        try:
             conn.listening.clear()
-            continue
-        conn.sock.sendall(f"{REQUEST_PEER_MSG}".encode())
-        received = conn.sock.recv(50).decode()
-        if received == '':
-            return False
-        msg = received.split(SEPARATOR)
-        if msg[0] == REPLY_PEER_MSG:
-            filename, filesize = os.path.basename(msg[1]), int(msg[2])
-            progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
-            total = 0
-            with open(os.path.join(self.data_dir, filename), "wb") as f:
-                while total < filesize:
-                    # read 1024 bytes from the socket (receive)
-                    conn.sock.settimeout(2)
-                    try:
-                        bytes_read = conn.sock.recv(BUFFER_SIZE)
-                    except socket.timeout:
-                        self.receive_from_node(conn)
+            while conn.listening.isSet():
+                conn.listening.clear()
+                continue
+            conn.sock.sendall(f"{REQUEST_PEER_MSG}".encode())
+            self.message_count_send += 1
+            received = conn.sock.recv(50).decode()
+            self.message_count_recv += 1
+            if received == '':
+                return False
+            msg = received.split(SEPARATOR)
+            if msg[0] == REPLY_PEER_MSG:
+                filename, filesize = os.path.basename(msg[1]), int(msg[2])
+                progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+                total = 0
+                with open(os.path.join(self.data_dir, filename), "wb") as f:
+                    while total < filesize:
+                        # read 1024 bytes from the socket (receive)
+                        conn.sock.settimeout(2)
+                        try:
+                            bytes_read = conn.sock.recv(BUFFER_SIZE)
+                        except socket.timeout:
+                            self.receive_from_node(conn)
 
-                    if not bytes_read:
-                        # nothing is received
-                        # file transmitting is done
-                        break
-                    # write to the file the bytes we just received
-                    f.write(bytes_read)
-                    total += len(bytes_read)
-                    print(f'r{total}/{filesize}')
-                    # update the progress bar
-                    progress.update(len(bytes_read))
-                    if total == filesize:
-                        break
-            conn.listening.set()
-            print("msg received received!")
-            try:
+                        if not bytes_read:
+                            # nothing is received
+                            # file transmitting is done
+                            break
+                        # write to the file the bytes we just received
+                        f.write(bytes_read)
+                        self.message_count_recv += 1
+                        total += len(bytes_read)
+                        print(f'r{total}/{filesize}')
+                        # update the progress bar
+                        progress.update(len(bytes_read))
+                        if total == filesize:
+                            break
+                conn.listening.set()
                 msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
                 self.compute_new_model(msg.weights) # also has msg.clientno, msg.roundno, msg.instance_count
-            except:
-                print('Failed to get weights')
-                pass
-            return True
+                print("msg received received!")
+                return True
+        except:
+            print('Failed to get weights')
+            return False
         return False
 
 #---------------------------------------------------------------------
@@ -518,6 +528,7 @@ class NodeConnection(threading.Thread):
                     continue
                 print(line)
                 msg = line.split(SEPARATOR)
+                self.nodeServer.message_count_recv += 1
                 if msg[0]==REQUEST_PEER_MSG:
                     weights = self.nodeServer.model.get_weights()
                     filepath = os.path.join(self.nodeServer.data_dir, '{}_{}.pkl'.format(self.nodeServer.peer_no, self.nodeServer.round_no))
@@ -528,6 +539,7 @@ class NodeConnection(threading.Thread):
                     filename = os.path.basename(filepath)
                     self.sock.sendall(f"{REPLY_PEER_MSG}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
                     print('Preparing to send file...')
+                    self.nodeServer.message_count_send += 1
                     # start sending the file
                     progress = tqdm.tqdm(range(filesize), f"Sending {filename}", unit="B", unit_scale=True, unit_divisor=1024)
                     self.listening.clear()
@@ -544,6 +556,7 @@ class NodeConnection(threading.Thread):
                             # we use sendall to assure transimission in
                             # busy networks
                             self.sock.sendall(bytes_read)
+                            self.nodeServer.message_count_send += 1
                             time.sleep(0.1)
                             print(f'sending...{sent_bytes}/{filesize}')
                             # update the progress bar
@@ -646,19 +659,23 @@ if __name__ == '__main__':
     # client = main(0)
     test_x, test_y = get_data('data/test.csv')
 
-    def evaluate(model_i):
-    # print(classification_report(test_y, model_i.predict(test_x)))
-    # print('F1, ROC: {}, {}:'.format(f1_score(test_y, model_i.predict(test_x)),
-    #     roc_auc_score(test_y, model_i.predict_proba(test_x))))
-        return {
-                    'f1': f1_score(test_y, model_i.predict(test_x)),
-                    'roc': roc_auc_score(test_y, model_i.predict_proba(test_x))
-        }
+    def evaluate(client, fname='results.csv'):
 
-    # client = create_client(1)
-    # client_x, client_y = get_round_data('./data/1', 0)
-    # client.init(client_x, client_y)
-    # evaluate(client.model)
+        data = {
+            'client_no': client.peer_no,
+            'round_no': client.round_no,
+            'instance_count': client.model.get_instance_count(),
+            'f1': np.around(f1_score(test_y, client.model.predict(test_x)), 2),
+            'roc': np.around(roc_auc_score(test_y, client.model.predict_proba(test_x)), 2),
+            'messages_sent': client.message_count_send,
+            'messages_recv': client.message_count_recv
+        }
+        if fname != '':
+            df = pd.DataFrame([data], columns=['client_no', 'round_no', 'instance_count', 'f1', 'roc', 'messages_sent', 'messages_recv'])
+            with open(fname, 'a') as f:
+                df.to_csv(fname,index=False, mode='a', header=f.tell()==0)
+        return data
+
 
 
     parser = argparse.ArgumentParser(description='Start a peer')
@@ -670,6 +687,8 @@ if __name__ == '__main__':
                         help="Host Port for peer. Default is '10000'.")
     parser.add_argument("--data_dir", dest="data_dir", default='peer_data/',
                         help="peer Data Dir to store weights. Default is 'peer_data/'.")
+    parser.add_argument("--output", dest="output", default='result.csv',
+                        help="Output file for storing results")
     parser.add_argument("--train_data_dir", dest="train_data_dir", default='data/',
                         help="Peer Data Dir to store train data. Default is 'data/'.")
     args = parser.parse_args()
@@ -691,7 +710,7 @@ if __name__ == '__main__':
     peer.init(peer_x, peer_y)
     peer.start()
     print("Peer created with model for round 0. Type evaluate to see performance.")
-
+    print(evaluate(peer,args.output))
 
 
     while True:
@@ -701,12 +720,24 @@ if __name__ == '__main__':
                 break
             elif msg[0] == 'help':
                 print(helpstr)
+            elif msg[0] =='evaluate_write':
+                print(evaluate(peer, args.output))
             elif msg[0] =='evaluate':
-                print(evaluate(peer.model))
+                print(evaluate(peer, ''))
+            elif msg[0] =='connections':
+                peer.print_connections()
             elif msg[0] == 'random_update':
-                peer.receive_from_random_node()
+                while True:
+                    if peer.receive_from_random_node():
+                        break
+                    time.sleep(2)
             elif msg[0] == 'random_update_n':
-                peer.receive_from_n_random_nodes(int(msg[1]))
+                rand_indices=np.random.choice(len(peer.nodesOut), size=int(msg[1]), replace=False)
+                for index in rand_indices:
+                    while True:
+                        if peer.receive_from_random_index(index):
+                            break
+                        time.sleep(2)
             elif msg[0] == 'cl':
                 peer.connect_with_node("localhost", int(msg[1]))
             elif msg[0] == 'connect':
@@ -716,6 +747,11 @@ if __name__ == '__main__':
             elif msg[0] == 'train_round':
                 client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), int(msg[1]))
                 peer.train_round(client_x, client_y)
+            elif msg[0] == 'next_round':
+                print(f'Training model for round {peer.round_no + 1}')
+                client_x, client_y = get_round_data(os.path.join(args.train_data_dir, f'{args.id}'), peer.round_no + 1)
+                peer.train_round(client_x, client_y)
+                print(evaluate(peer, args.output))
         except:
             traceback.print_exc()
             continue
