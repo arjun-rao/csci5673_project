@@ -33,7 +33,7 @@ def init_peer(peer):
     print(f"Peer {id} created with model for round 0.")
     print(evaluate(peer, output))
 
-output = 'experiment_3.csv'
+output = 'experiment_2.csv'
 train_data_dir = 'data/'
 max_peers = 5
 rounds = 4
@@ -64,7 +64,7 @@ def exchange_weights(peers, max_peers):
         all_ports = [peers[j].port for j in range(max_peers) if j != i]
         print(f'Receiving weights to peer: {i}')
         # Change this for different experiments
-        ports = list(np.random.choice(all_ports, size=2, replace=False))
+        ports = list(np.random.choice(all_ports, size=1, replace=False))
         while len(ports) > 0:
             port = ports.pop(0)
             print(f'Receiving update from node: {port} for peer: {i}')
