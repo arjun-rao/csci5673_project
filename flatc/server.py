@@ -61,7 +61,6 @@ class Server:
     def HandleClientRequest(self, connection):
 
         received = connection.recv(50)
-        print(received)
         received = received.decode()
         msg = received.split(SEPARATOR)
         if msg[0] == CLIENT_WEIGHT_UPDATE:
@@ -141,7 +140,7 @@ class Server:
         connection.close()
 
     def WriteClientWeights(self, weights, clientno, roundno, instance_count):
-        print("Weights : ", weights)
+        # print("Weights : ", weights)
         print("Client no : ", clientno)
         print("Round no : ", roundno)
         print("Instance count: ", instance_count)

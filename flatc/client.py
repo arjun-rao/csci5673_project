@@ -31,6 +31,8 @@ class Client:
         self.round_no = -1
         self.model = None
         self.model_id = -1
+        self.message_count_send = 0
+        self.message_count_recv = 0
         self.data_dir = os.path.join(data_dir, str(client_no))
         os.makedirs(self.data_dir, exist_ok=True)
 
@@ -58,9 +60,11 @@ class Client:
         """
         self.connect()
         self.ClientSocket.send(f"{REQUEST_GLOBAL_MSG}{SEPARATOR}{modelid}".encode())
+        self.message_count_send += 1
         received = self.ClientSocket.recv(100).decode()
         if received == '':
             return False
+        self.message_count_recv += 1
         msg = received.split(SEPARATOR)
         if msg[0] == REPLY_GLOBAL_MSG:
             filename, filesize, modelid = os.path.basename(msg[1]), int(msg[2]), int(msg[3])
@@ -75,6 +79,7 @@ class Client:
                         # nothing is received
                         # file transmitting is done
                         break
+                    self.message_count_recv += 1
                     # write to the file the bytes we just received
                     f.write(bytes_read)
                     # update the progress bar
@@ -94,6 +99,7 @@ class Client:
         filename = os.path.basename(filepath)
         self.connect()
         self.ClientSocket.send(f"{CLIENT_WEIGHT_UPDATE}{SEPARATOR}{filename}{SEPARATOR}{filesize}".encode())
+        self.message_count_send += 1
         print('Preparing to send file...')
         time.sleep(1)
         # start sending the file
@@ -108,6 +114,7 @@ class Client:
                 # we use sendall to assure transimission in
                 # busy networks
                 self.ClientSocket.sendall(bytes_read)
+                self.message_count_send += 1
                 # update the progress bar
                 progress.update(len(bytes_read))
         # close the socket

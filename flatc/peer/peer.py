@@ -170,22 +170,24 @@ class Node(threading.Thread):
     def delete_closed_connections(self):
         for n in self.nodesIn:
             if n.terminate_flag.is_set():
-                self.event_node_inbound_closed(n)
+                # self.event_node_inbound_closed(n)
 
                 if ( self.callback != None ):
                     self.callback("NODEINBOUNDCLOSED", self, n, {})
 
                 n.join()
+                self.event_node_inbound_closed(n)
                 del self.nodesIn[self.nodesIn.index(n)]
 
         for n in self.nodesOut:
             if n.terminate_flag.is_set():
-                self.event_node_outbound_closed(n)
+                # self.event_node_outbound_closed(n)
 
                 if ( self.callback != None ):
                     self.callback("NODEOUTBOUNDCLOSED", self, n, {})
 
                 n.join()
+                self.event_node_outbound_closed(n)
                 del self.nodesOut[self.nodesIn.index(n)]
 
     def create_message(self, data):
@@ -199,19 +201,36 @@ class Node(threading.Thread):
 
     def receive_from_random_index(self, index):
         print(f'Requesting from node: {self.nodesOut[index].port}');
+        port = self.nodesOut[index].port
         try:
-            return self.receive_from_node(self.nodesOut[index])
+            if self.receive_from_node(self.nodesOut[index]):
+                print("Successfully received weights")
+                self.nodesOut[index].stop()
+                del self.nodesOut[index]
+                print("Connection Closed")
+                return True, port
         except:
-                return False
+            self.nodesOut[index].stop()
+            del self.nodesOut[index]
+            return False, port
+        return False, port
 
     def receive_from_random_node(self):
-        rand_indices=np.random.choice(len(self.nodesOut), size=1, replace=False)
-        for index in rand_indices:
-            print(f'Requesting from node: {self.nodesOut[index].port}');
-            try:
-                return self.receive_from_node(self.nodesOut[index])
-            except:
-                return False
+        index = np.random.choice(len(self.nodesOut), size=1, replace=False)[0]
+        port = self.nodesOut[index].port
+        print(f'Requesting from node: {self.nodesOut[index].port}');
+        try:
+            if self.receive_from_node(self.nodesOut[index]):
+                print("Successfully received weights")
+                self.nodesOut[index].stop()
+                del self.nodesOut[index]
+                print("Connection Closed")
+                return True, port
+        except:
+            self.nodesOut[index].stop()
+            del self.nodesOut[index]
+            return False, port
+        return False, port
 
     def receive_from_node(self, conn):
         """
@@ -234,9 +253,9 @@ class Node(threading.Thread):
                 progress = tqdm.tqdm(range(filesize), f"Receiving {filename}", unit="B", unit_scale=True, unit_divisor=1024)
                 total = 0
                 with open(os.path.join(self.data_dir, filename), "wb") as f:
-                    while total < filesize:
+                    while total <= filesize:
                         # read 1024 bytes from the socket (receive)
-                        conn.sock.settimeout(2)
+                        conn.sock.settimeout(None)
                         try:
                             bytes_read = conn.sock.recv(BUFFER_SIZE)
                         except socket.timeout:
@@ -245,7 +264,13 @@ class Node(threading.Thread):
                         if not bytes_read:
                             # nothing is received
                             # file transmitting is done
-                            break
+                            f.close()
+                            progress.close()
+                            msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
+                            self.compute_new_model(msg.weights)
+                            print("msg received received!")
+                            conn.stop()
+                            return True
                         # write to the file the bytes we just received
                         f.write(bytes_read)
                         self.message_count_recv += 1
@@ -253,14 +278,13 @@ class Node(threading.Thread):
                         print(f'r{total}/{filesize}')
                         # update the progress bar
                         progress.update(len(bytes_read))
-                        if total == filesize:
-                            break
-                conn.listening.set()
-                msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
-                self.compute_new_model(msg.weights) # also has msg.clientno, msg.roundno, msg.instance_count
-                print("msg received received!")
-                return True
+                        time.sleep(0.05)
+                # msg = pickle.load(open(os.path.join(self.data_dir, filename), 'rb'))
+                # self.compute_new_model(msg.weights) # also has msg.clientno, msg.roundno, msg.instance_count
+                # print("msg received received!")
+                return False
         except:
+            traceback.print_exc()
             print('Failed to get weights')
             return False
         return False
@@ -296,6 +320,10 @@ class Node(threading.Thread):
         else:
             self.dprint("TcpServer.send2node: Could not send the data, node is not found!")
 
+    def delete_old_connection(self, host, port):
+        for node in self.nodesOut:
+            if ( node.get_host() == host and node.get_port() == port ):
+                del self.nodesOut[self.nodesOut.index(node)]
     # Make a connection with another node that is running on host with port.
     # When the connection is made, an event is triggered CONNECTEDWITHNODE.
     def connect_with_node(self, host, port):
@@ -308,8 +336,12 @@ class Node(threading.Thread):
         # Check if node is already connected with this node!
         for node in self.nodesOut:
             if ( node.get_host() == host and node.get_port() == port ):
-                print("connect_with_node: Already connected with this node.")
-                return True
+                if node.terminate_flag.is_set():
+                    # node.join()
+                    del self.nodesOut[self.nodesOut.index(node)]
+                else:
+                    node.terminate_flag.is_set()
+                    del self.nodesOut[self.nodesOut.index(node)]
 
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -334,7 +366,8 @@ class Node(threading.Thread):
     # Disconnect with a node. It sends a last message to the node!
     def disconnect_with_node(self, node):
         if node in self.nodesOut:
-            node.send(self.create_message( {"type": "message", "message": "Terminate connection"} ))
+            # node.send(self.create_message( {"type": "message", "message": "Terminate connection"} ))
+            print(f'Terminated Connection with Node: {node.port}')
             node.stop()
             node.join() # When this is here, the application is waiting and waiting
             del self.nodesOut[self.nodesOut.index(node)]
@@ -546,23 +579,30 @@ class NodeConnection(threading.Thread):
                     time.sleep(1)
                     sent_bytes = 0
                     with open(filepath, "rb") as f:
-                        while sent_bytes < filesize:
+                        while sent_bytes <= filesize:
                             # read the bytes from the file
                             bytes_read = f.read(BUFFER_SIZE)
                             if not bytes_read:
                                 # file transmitting is done
+                                progress.close()
+                                print('File Sent')
+                                self.sock.settimeout(None)
+                                self.sock.close()
+                                self.terminate_flag.set()
                                 break
                             sent_bytes += len(bytes_read)
                             # we use sendall to assure transimission in
                             # busy networks
                             self.sock.sendall(bytes_read)
                             self.nodeServer.message_count_send += 1
-                            time.sleep(0.1)
+                            time.sleep(0.05)
                             print(f'sending...{sent_bytes}/{filesize}')
                             # update the progress bar
                             progress.update(len(bytes_read))
                     print('File Sent')
-                    self.listening.set()
+                    self.terminate_flag.set()
+                    continue
+
 
                 # elif msg[0] == REPLY_PEER_MSG:
                 #     filename, filesize = os.path.basename(msg[1]), int(msg[2])
@@ -617,9 +657,11 @@ class NodeConnection(threading.Thread):
                 #     index = self.buffer.find("-TSN")
 
             time.sleep(0.01)
-
-        self.sock.settimeout(None)
-        self.sock.close()
+        try:
+            self.sock.settimeout(None)
+            self.sock.close()
+        except:
+            print('Socket Closed')
         self.nodeServer.dprint("NodeConnection: Stopped")
 
 #######################################################################################################################
@@ -728,9 +770,12 @@ if __name__ == '__main__':
                 peer.print_connections()
             elif msg[0] == 'random_update':
                 while True:
-                    if peer.receive_from_random_node():
+                    status, port = peer.receive_from_random_node()
+                    if status:
                         break
-                    time.sleep(2)
+                    else:
+                        time.sleep(2)
+                        peer.connect_with_node("localhost", port)
             elif msg[0] == 'random_update_n':
                 rand_indices=np.random.choice(len(peer.nodesOut), size=int(msg[1]), replace=False)
                 for index in rand_indices:
